@@ -1,0 +1,11 @@
+/node_modules
+/dist
+/build
+/coverage
+/logs
+/tmp
+/test
+/test-results
+/test-results.xml
+/test-results.xml
+.env    
