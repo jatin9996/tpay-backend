@@ -6,6 +6,7 @@ import swapRoutes from "./routes/swap.js";
 import liquidityRoutes from "./routes/liquidity.js";
 import poolRoutes from "./routes/pools.js";
 import tokenRoutes from "./routes/tokens.js";
+import wethApprovalRoutes from "./routes/wethApproval.js";
 
 const app = express();
 app.use(cors());
@@ -16,6 +17,7 @@ app.use("/dex", swapRoutes);
 app.use("/liquidity", liquidityRoutes);
 app.use("/data", poolRoutes);
 app.use("/tokens", tokenRoutes);
+app.use("/api/weth", wethApprovalRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`Server running on port ${config.PORT}`);

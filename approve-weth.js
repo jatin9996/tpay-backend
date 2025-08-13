@@ -1,80 +1,78 @@
-import 'dotenv/config';
-import { ethers } from 'ethers';
+import { ethers } from "ethers";
+import dotenv from "dotenv";
 
-const TOKEN_ADDRESS   = '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619'; // WETH on Polygon
-const ROUTER_ADDRESS  = process.env.ROUTER_ADDRESS; // use your .env value
-const AMOUNT_WEI      = ethers.parseUnits('0.001', 18); // 0.001 WETH
+// Load environment variables
+dotenv.config();
 
-const ERC20_ABI = [
-  'function approve(address spender, uint256 amount) external returns (bool)',
-  'function allowance(address owner, address spender) external view returns (uint256)',
-  'function decimals() view returns (uint8)'
-];
+// Configuration
+const RPC_URL = process.env.RPC_URL || "https://rpc-amoy.polygon.technology/";
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const WETH_ADDRESS = process.env.WETH_ADDRESS || "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619";
+const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
 
-async function main() {
-  try {
-    console.log('Environment check:');
-    console.log('RPC_URL:', process.env.RPC_URL ? 'Set' : 'NOT SET');
-    console.log('PRIVATE_KEY:', process.env.PRIVATE_KEY ? 'Set' : 'NOT SET');
-    console.log('ROUTER_ADDRESS:', process.env.ROUTER_ADDRESS ? 'Set' : 'NOT SET');
-    
-    const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-    const wallet   = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-
-    console.log('\nWallet info:');
-    console.log('Approver (msg.sender):', await wallet.getAddress());
-    console.log('Router (spender):', ROUTER_ADDRESS);
-    console.log('Token address:', TOKEN_ADDRESS);
-
-    // Test provider connection
-    console.log('\nTesting provider connection...');
-    const blockNumber = await provider.getBlockNumber();
-    console.log('Current block number:', blockNumber);
-
-    const token = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, wallet);
-
-    // Test basic contract interaction first
-    console.log('\nTesting contract interaction...');
-    try {
-      const decimals = await token.decimals();
-      console.log('Token decimals:', decimals);
-    } catch (error) {
-      console.log('Error getting decimals:', error.message);
-    }
-
-    // Try to get allowance with error handling
-    console.log('\nChecking allowance...');
-    try {
-      let allowBefore = await token.allowance(await wallet.getAddress(), ROUTER_ADDRESS);
-      console.log('Allowance before:', allowBefore.toString());
-    } catch (error) {
-      console.log('Error getting allowance:', error.message);
-      console.log('This might indicate the token contract is not responding properly');
-    }
-
-    // Proceed with approval
-    console.log('\nProceeding with approval...');
-    const tx = await token.approve(ROUTER_ADDRESS, AMOUNT_WEI);
-    console.log('Approve tx:', tx.hash);
-    await tx.wait();
-    console.log('Approval confirmed!');
-
-    // Check allowance after
-    try {
-      let allowAfter = await token.allowance(await wallet.getAddress(), ROUTER_ADDRESS);
-      console.log('Allowance after:', allowAfter.toString());
-    } catch (error) {
-      console.log('Error getting final allowance:', error.message);
-    }
-
-  } catch (error) {
-    console.error('Main error:', error);
-    console.error('Error details:', {
-      code: error.code,
-      message: error.message,
-      data: error.data
-    });
-  }
+// Validate required environment variables
+if (!PRIVATE_KEY) {
+    console.error("❌ PRIVATE_KEY environment variable is required");
+    process.exit(1);
 }
 
-main().catch(console.error);
+if (!ROUTER_ADDRESS) {
+    console.error("❌ ROUTER_ADDRESS environment variable is required");
+    process.exit(1);
+}
+
+// ABI for the approve function
+const ABI = ["function approve(address spender, uint256 amount) public returns (bool)"];
+
+const main = async () => {
+    try {
+        console.log("🚀 Starting WETH approval process...");
+        console.log(`🌐 Network: ${RPC_URL}`);
+        console.log(`🔑 Wallet: ${new ethers.Wallet(PRIVATE_KEY).address}`);
+        console.log(`🪙 WETH Contract: ${WETH_ADDRESS}`);
+        console.log(`🔄 Router Contract: ${ROUTER_ADDRESS}`);
+        console.log("");
+
+        // Create provider and wallet
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
+        
+        // Create token contract instance
+        const token = new ethers.Contract(WETH_ADDRESS, ABI, wallet);
+
+        console.log("📝 Sending approval transaction...");
+        
+        // Send approval transaction
+        const tx = await token.approve(ROUTER_ADDRESS, ethers.MaxUint256);
+        console.log(`📋 Transaction hash: ${tx.hash}`);
+        
+        console.log("⏳ Waiting for transaction confirmation...");
+        
+        // Wait for transaction confirmation
+        const receipt = await tx.wait();
+        
+        console.log("✅ WETH approval successful!");
+        console.log(`📊 Gas used: ${receipt.gasUsed.toString()}`);
+        console.log(`🔗 Transaction hash: ${receipt.hash}`);
+        console.log(`📅 Block number: ${receipt.blockNumber}`);
+        
+        // Verify the approval
+        console.log("\n🔍 Verifying approval...");
+        const allowanceAbi = ["function allowance(address owner, address spender) view returns (uint256)"];
+        const tokenWithAllowance = new ethers.Contract(WETH_ADDRESS, allowanceAbi, provider);
+        const allowance = await tokenWithAllowance.allowance(wallet.address, ROUTER_ADDRESS);
+        
+        if (allowance === ethers.MaxUint256) {
+            console.log("✅ Verification successful: Unlimited allowance granted");
+        } else {
+            console.log(`⚠️  Verification: Allowance is ${ethers.formatEther(allowance)} WETH`);
+        }
+        
+    } catch (error) {
+        console.error("❌ WETH approval failed:", error.message);
+        process.exit(1);
+    }
+};
+
+// Run the script
+main();
