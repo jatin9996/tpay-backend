@@ -3,10 +3,6 @@ import { getAllowedTokens, isTokenAllowed } from "../services/tokenValidation.js
 
 const router = express.Router();
 
-/**
- * GET /tokens/allowed
- * Returns the list of all allowed token addresses
- */
 router.get("/allowed", (req, res) => {
     try {
         const allowedTokens = getAllowedTokens();
@@ -20,10 +16,7 @@ router.get("/allowed", (req, res) => {
     }
 });
 
-/**
- * GET /tokens/validate/:address
- * Validates if a specific token address is allowed
- */
+
 router.get("/validate/:address", (req, res) => {
     try {
         const { address } = req.params;

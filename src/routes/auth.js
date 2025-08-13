@@ -78,9 +78,9 @@ router.post("/login", async (req, res) => {
         } catch (verifyError) {
             console.error("Signature verification error:", verifyError);
             
-            // Try to parse the signature manually to see what's wrong
+       
             try {
-                // Check if it's a valid hex string
+           
                 if (!/^0x[a-fA-F0-9]+$/.test(signature)) {
                     return res.status(400).json({ 
                         success: false, 
@@ -88,7 +88,7 @@ router.post("/login", async (req, res) => {
                     });
                 }
                 
-                // Try to convert to bytes
+       
                 const signatureBytes = ethers.getBytes(signature);
                 console.log("Signature as bytes length:", signatureBytes.length);
                 

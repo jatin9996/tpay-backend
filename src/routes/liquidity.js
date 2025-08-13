@@ -14,7 +14,7 @@ router.post("/add-liquidity", async (req, res) => {
     try {
         const { token0, token1, amount0, amount1, recipient } = req.body;
 
-        // Validate tokens using strict checking
+       
         const validatedToken0 = validateToken(token0);
         const validatedToken1 = validateToken(token1);
 
