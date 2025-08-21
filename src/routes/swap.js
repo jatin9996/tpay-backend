@@ -1,21 +1,114 @@
+/**
+ * Swap Router - Handles token swapping functionality using Uniswap V3
+ * Provides endpoints for getting quotes, executing swaps, and managing token operations
+ * 
+ * ARCHITECTURE NOTE:
+ * This router provides both custodial and non-custodial swap options:
+ * 
+ * 1. POST /swap - Custodial swap (executes from backend private key)
+ *    - RISK: Backend controls user funds
+ *    - REQUIRES: Operational limits, daily caps, withdrawal policies
+ *    - USE CASE: High-frequency trading, institutional clients
+ * 
+ * 2. POST /swap/populate - Non-custodial swap (returns transaction for user to sign)
+ *    - SAFER: User maintains control of their funds
+ *    - NO RISK: Backend never touches user tokens
+ *    - USE CASE: Retail users, self-custody preferred
+ * 
+ * RECOMMENDATION: Use non-custodial approach for most use cases to eliminate
+ * custodial risk and regulatory complexity.
+ */
+
 import express from "express";
 import { ethers } from "ethers";
+// Import Uniswap V3 contract ABIs for swap operations
 import routerABI from "@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json" assert { type: "json" };
 import quoterABI from "@uniswap/v3-periphery/artifacts/contracts/Quoter.sol/Quoter.json" assert { type: "json" };
 import config from "../config/env.js";
+import { getUniswapAddresses } from "../config/chains.js";
 import { validateToken } from "../services/tokenValidation.js";
+import { validateOperationalLimits, getOperationalStatus } from "../config/operationalLimits.js";
 
 const router = express.Router();
 
-const provider = new ethers.JsonRpcProvider(config.RPC_URL);
-const wallet = new ethers.Wallet(config.PRIVATE_KEY, provider);
-const uniswapRouter = new ethers.Contract(config.ROUTER_ADDRESS, routerABI.abi, wallet);
+// Initialize Ethereum provider and wallet for blockchain interactions
+let provider, wallet, uniswapRouter, quoter;
 
-// Initialize Quoter contract for price quotes
-const quoterAddress = "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6"; // Uniswap V3 Quoter
-const quoter = new ethers.Contract(quoterAddress, quoterABI.abi, provider);
+// Valid fee tiers for Uniswap V3 pools
+const VALID_FEES = new Set([500, 3000, 10000]);
 
-// Helper function to validate and format Ethereum addresses
+// Maximum TTL for swap deadlines (24 hours in seconds)
+const MAX_TTL_SECONDS = 24 * 60 * 60;
+
+// Async function to initialize blockchain connections
+async function initializeBlockchain() {
+    try {
+        provider = new ethers.JsonRpcProvider(config.RPC_URL);
+        wallet = new ethers.Wallet(config.PRIVATE_KEY, provider);
+        
+        // Get chain ID and corresponding Uniswap V3 addresses
+        const network = await provider.getNetwork();
+        let chainId = network.chainId.toString();
+        
+        // Allow forcing a specific chain ID via environment variable (useful for testing)
+        if (config.FORCE_CHAIN_ID) {
+            chainId = config.FORCE_CHAIN_ID;
+            console.log(`Forcing chain ID to: ${chainId} (from environment variable)`);
+        }
+        
+        console.log(`Connected to chain ID: ${chainId}`);
+        
+        // Get chain-specific Uniswap V3 addresses
+        const uniswapAddresses = getUniswapAddresses(chainId);
+        console.log(`Using Uniswap V3 addresses for chain ${chainId}:`, {
+            quoter: uniswapAddresses.quoter,
+            router: uniswapAddresses.router
+        });
+        
+        // Initialize Uniswap V3 Router contract for executing swaps
+        uniswapRouter = new ethers.Contract(uniswapAddresses.router, routerABI.abi, wallet);
+        
+        // Initialize Quoter contract for getting price quotes before swaps
+        quoter = new ethers.Contract(uniswapAddresses.quoter, quoterABI.abi, provider);
+        
+        console.log("Blockchain initialization completed successfully");
+    } catch (error) {
+        console.error("Failed to initialize blockchain:", error);
+        throw error;
+    }
+}
+
+// Initialize blockchain connections when the module loads
+initializeBlockchain().catch(console.error);
+
+/**
+ * Middleware to ensure blockchain is initialized before processing requests
+ */
+async function ensureBlockchainInitialized(req, res, next) {
+    if (!provider || !wallet || !uniswapRouter || !quoter) {
+        try {
+            // Try to initialize if not already done
+            await initializeBlockchain();
+            next();
+        } catch (error) {
+            console.error("Blockchain initialization failed:", error);
+            return res.status(503).json({ 
+                error: "Service temporarily unavailable - blockchain connection failed",
+                details: error.message
+            });
+        }
+    } else {
+        next();
+    }
+}
+
+/**
+ * Validates and formats Ethereum addresses
+ * @param {string} address - The address to validate
+ * @param {string} addressName - Name of the address for error messages
+ * @returns {string} Checksummed Ethereum address
+ * @throws {Error} If address is invalid or missing
+ */
 function validateAndFormatAddress(address, addressName) {
     try {
         if (!address) {
@@ -34,7 +127,36 @@ function validateAndFormatAddress(address, addressName) {
     }
 }
 
-// Helper function to get token decimals
+/**
+ * Validates fee tier for Uniswap V3 pools
+ * @param {number} fee - The fee to validate
+ * @returns {number} Validated fee
+ * @throws {Error} If fee is invalid
+ */
+function validateFee(fee) {
+    if (!Number.isInteger(fee) || !VALID_FEES.has(Number(fee))) {
+        throw new Error("Invalid pool fee; use 500, 3000, or 10000");
+    }
+    return fee;
+}
+
+/**
+ * Validates and calculates deadline timestamp
+ * @param {number} ttlSec - Time to live in seconds (optional)
+ * @returns {number} Deadline timestamp
+ */
+function calculateDeadline(ttlSec = 600) { // Default 10 minutes
+    if (ttlSec <= 0 || ttlSec > MAX_TTL_SECONDS) {
+        throw new Error(`TTL must be between 1 and ${MAX_TTL_SECONDS} seconds`);
+    }
+    return Math.floor(Date.now() / 1000) + ttlSec;
+}
+
+/**
+ * Gets the decimal places for a given token
+ * @param {string} tokenAddress - The token contract address
+ * @returns {number} Number of decimal places (defaults to 18 if query fails)
+ */
 async function getTokenDecimals(tokenAddress) {
     try {
         const tokenContract = new ethers.Contract(tokenAddress, [
@@ -47,7 +169,15 @@ async function getTokenDecimals(tokenAddress) {
     }
 }
 
-// Helper function to check and handle token approval
+/**
+ * Ensures a token has sufficient allowance for the router to spend
+ * @param {string} tokenAddress - The token contract address
+ * @param {string} ownerAddress - The token owner's address
+ * @param {string} spenderAddress - The address that needs approval (router)
+ * @param {string} amount - The amount to approve
+ * @returns {boolean} True if approval is successful
+ * @throws {Error} If approval fails
+ */
 async function ensureTokenApproval(tokenAddress, ownerAddress, spenderAddress, amount) {
     try {
         const tokenContract = new ethers.Contract(tokenAddress, [
@@ -58,7 +188,9 @@ async function ensureTokenApproval(tokenAddress, ownerAddress, spenderAddress, a
         const allowance = await tokenContract.allowance(ownerAddress, spenderAddress);
         
         if (allowance < amount) {
-            console.log(`Approving ${ethers.formatUnits(amount, 18)} tokens for router...`);
+            // Get token decimals for accurate logging
+            const dec = await getTokenDecimals(tokenAddress);
+            console.log(`Approving ${ethers.formatUnits(amount, dec)} tokens for router...`);
             const approveTx = await tokenContract.approve(spenderAddress, amount);
             await approveTx.wait();
             console.log("Token approval successful");
@@ -72,14 +204,28 @@ async function ensureTokenApproval(tokenAddress, ownerAddress, spenderAddress, a
     }
 }
 
-// Helper function to calculate minimum amount out based on slippage
-function calculateMinimumAmountOut(amountIn, slippageTolerancePercent) {
-    const slippageMultiplier = 1 - (slippageTolerancePercent / 100);
-    return amountIn * slippageMultiplier;
+/**
+ * Calculates minimum output amount based on slippage tolerance using basis points
+ * @param {BigInt} expectedOutWei - Expected output amount in Wei (BigInt)
+ * @param {number} slippagePct - Slippage tolerance as percentage
+ * @returns {BigInt} Minimum output amount after slippage in Wei
+ * @throws {Error} If slippage is out of valid range
+ */
+function calcMinOutFromSlippage(expectedOutWei, slippagePct) {
+    const bps = Math.round(Number(slippagePct) * 100);
+    if (bps < 10 || bps > 5000) {
+        throw new Error("Slippage must be between 0.1% and 50%");
+    }
+    const DENOM = 10_000n;
+    return (BigInt(expectedOutWei) * (DENOM - BigInt(bps))) / DENOM;
 }
 
-// Quote endpoint to get expected output amount
-router.post("/quote", async (req, res) => {
+/**
+ * GET QUOTE ENDPOINT
+ * Provides price quotes for token swaps without executing the transaction
+ * Used to show users expected output before they commit to a swap
+ */
+router.post("/quote", ensureBlockchainInitialized, async (req, res) => {
     try {
         const { tokenIn, tokenOut, amountIn, fee = 3000 } = req.body;
 
@@ -94,57 +240,88 @@ router.post("/quote", async (req, res) => {
             });
         }
 
-        // Validate tokens
-        let validatedTokenIn, validatedTokenOut;
-        try {
-            validatedTokenIn = validateToken(tokenInAddress);
-            validatedTokenOut = validateToken(tokenOutAddress);
-        } catch (validationError) {
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
             return res.status(400).json({ 
-                error: `Token validation failed: ${validationError.message}`,
-                tokenIn: tokenInAddress,
-                tokenOut: tokenOutAddress
+                error: "Cannot swap token for itself" 
             });
         }
 
-        // Validate amount
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate tokens using the token validation service
+        let validatedTokenIn, validatedTokenOut;
+        try {
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
+        } catch (validationError) {
+            return res.status(400).json({ 
+                error: `Token validation failed: ${validationError.message}`,
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
+            });
+        }
+
+        // Validate input amount
         if (!amountIn || isNaN(amountIn) || parseFloat(amountIn) <= 0) {
             return res.status(400).json({ 
                 error: "Valid amountIn is required and must be greater than 0" 
             });
         }
 
-        // Get token decimals
+        // Get token decimals and convert amount to Wei
         const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
         const amountInWei = ethers.parseUnits(amountIn, tokenInDecimals);
 
-        // Get quote from Uniswap V3 Quoter
+        // Get quote from Uniswap V3 Quoter contract
         const quoteAmountOut = await quoter.quoteExactInputSingle.staticCall(
             validatedTokenIn,
             validatedTokenOut,
-            fee,
+            validatedFee,
             amountInWei,
             0 
         );
+
+        // Reserve sanity check - reject if quote returns 0
+        if (quoteAmountOut <= 0n) {
+            return res.status(400).json({ 
+                error: "No executable route/liquidity for this pair" 
+            });
+        }
 
         // Get token out decimals for proper formatting
         const tokenOutDecimals = await getTokenDecimals(validatedTokenOut);
         const formattedAmountOut = ethers.formatUnits(quoteAmountOut, tokenOutDecimals);
 
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
         res.json({
             success: true,
+            chainId: chainId,
             tokenIn: validatedTokenIn,
             tokenOut: validatedTokenOut,
             amountIn: amountIn,
             expectedAmountOut: formattedAmountOut,
-            fee: fee,
+            fee: validatedFee,
             tokenInDecimals: tokenInDecimals,
             tokenOutDecimals: tokenOutDecimals
         });
     } catch (err) {
         console.error("Quote error:", err);
         
-        // Handle specific Uniswap errors
+        // Handle specific Uniswap errors with user-friendly messages
         if (err.message.includes("INSUFFICIENT_LIQUIDITY")) {
             return res.status(400).json({ error: "Insufficient liquidity for this swap" });
         }
@@ -156,9 +333,14 @@ router.post("/quote", async (req, res) => {
     }
 });
 
-router.post("/swap", async (req, res) => {
+/**
+ * EXECUTE SWAP ENDPOINT
+ * Executes the actual token swap on the blockchain
+ * Includes slippage protection, gas estimation, and transaction execution
+ */
+router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
     try {
-        const { tokenIn, tokenOut, amountIn, recipient, slippageTolerance = 0.5, fee = 3000 } = req.body;
+        const { tokenIn, tokenOut, amountIn, recipient, slippageTolerance = 0.5, fee = 3000, ttlSec = 600 } = req.body;
 
         // Use default token addresses from environment variables if not provided
         const tokenInAddress = tokenIn || config.WETH_ADDRESS;
@@ -171,94 +353,160 @@ router.post("/swap", async (req, res) => {
             });
         }
 
-        // Validate tokens using strict checking
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
+            return res.status(400).json({ 
+                error: "Cannot swap token for itself" 
+            });
+        }
+
+        // Validate tokens and recipient address using strict checking
         let validatedTokenIn, validatedTokenOut, validatedRecipient;
         try {
-            validatedTokenIn = validateToken(tokenInAddress);
-            validatedTokenOut = validateToken(tokenOutAddress);
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
             validatedRecipient = validateAndFormatAddress(recipient, "Recipient");
         } catch (validationError) {
             return res.status(400).json({ 
                 error: `Token validation failed: ${validationError.message}`,
-                tokenIn: tokenInAddress,
-                tokenOut: tokenOutAddress
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
             });
         }
 
-        // Validate amount
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate input amount
         if (!amountIn || isNaN(amountIn) || parseFloat(amountIn) <= 0) {
             return res.status(400).json({ 
                 error: "Valid amountIn is required and must be greater than 0" 
             });
         }
 
-        // Validate slippage tolerance
+        // Validate slippage tolerance (0.1% to 50%)
         if (slippageTolerance < 0.1 || slippageTolerance > 50) {
             return res.status(400).json({ 
                 error: "Slippage tolerance must be between 0.1% and 50%" 
             });
         }
 
-        // Get token decimals dynamically
+        // Validate operational limits for custodial swaps
+        const operationalValidation = validateOperationalLimits({
+            slippageTolerance,
+            ttlSec,
+            fee: validatedFee
+        });
+        
+        if (!operationalValidation.isValid) {
+            return res.status(400).json({ 
+                error: "Swap operation exceeds operational limits",
+                details: operationalValidation.errors,
+                limits: operationalValidation.limits
+            });
+        }
+
+        // Calculate deadline with TTL validation
+        let deadline;
+        try {
+            deadline = calculateDeadline(ttlSec);
+        } catch (deadlineError) {
+            return res.status(400).json({ error: deadlineError.message });
+        }
+
+        // Get token decimals dynamically and convert amount to Wei
         const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
         const amountInWei = ethers.parseUnits(amountIn, tokenInDecimals);
 
-        // Get quote for slippage calculation
+        // Get quote for slippage calculation and protection - ABORT if quote fails
         let expectedAmountOut;
         try {
             const quoteAmountOut = await quoter.quoteExactInputSingle.staticCall(
                 validatedTokenIn,
                 validatedTokenOut,
-                fee,
+                validatedFee,
                 amountInWei,
                 0
             );
+            
+            // Reserve sanity check - reject if quote returns 0
+            if (quoteAmountOut <= 0n) {
+                return res.status(400).json({ 
+                    error: "No executable route/liquidity for this pair" 
+                });
+            }
+            
             expectedAmountOut = quoteAmountOut;
         } catch (quoteError) {
-            console.warn("Failed to get quote, proceeding without slippage protection:", quoteError.message);
-            expectedAmountOut = ethers.parseUnits("0", await getTokenDecimals(validatedTokenOut));
+            console.error("Quote failed, aborting swap:", quoteError.message);
+            return res.status(400).json({ 
+                error: "Failed to get quote for slippage protection. Please try again or contact support if the issue persists." 
+            });
         }
-        const amountOutMinimum = calculateMinimumAmountOut(expectedAmountOut, slippageTolerance);
-
         
-        await ensureTokenApproval(validatedTokenIn, validatedRecipient, config.ROUTER_ADDRESS, amountInWei);
+        // Calculate minimum output amount based on slippage tolerance
+        let amountOutMinimum;
+        try {
+            amountOutMinimum = calcMinOutFromSlippage(expectedAmountOut, slippageTolerance);
+        } catch (slippageError) {
+            return res.status(400).json({ error: slippageError.message });
+        }
 
+        // Ensure the router has approval to spend the signer's tokens
+        await ensureTokenApproval(validatedTokenIn, wallet.address, config.ROUTER_ADDRESS, amountInWei);
+
+        // Estimate gas for the swap transaction
         let gasEstimate;
         try {
             gasEstimate = await uniswapRouter.exactInputSingle.estimateGas({
                 tokenIn: validatedTokenIn,
                 tokenOut: validatedTokenOut,
-                fee: fee,
+                fee: validatedFee,
                 recipient: validatedRecipient,
-                deadline: Math.floor(Date.now() / 1000) + 60 * 10,
+                deadline: deadline,
                 amountIn: amountInWei,
                 amountOutMinimum: amountOutMinimum,
                 sqrtPriceLimitX96: 0
             });
         } catch (gasError) {
             console.warn("Gas estimation failed, using default:", gasError.message);
-            gasEstimate = ethers.parseUnits("300000", "wei"); // Default gas limit
+            gasEstimate = 300000n; // Default gas limit
         }
 
-        // Execute the swap
+        // Execute the swap transaction on the blockchain
         const tx = await uniswapRouter.exactInputSingle({
             tokenIn: validatedTokenIn,
             tokenOut: validatedTokenOut,
-            fee: fee,
+            fee: validatedFee,
             recipient: validatedRecipient,
-            deadline: Math.floor(Date.now() / 1000) + 60 * 10,
+            deadline: deadline,
             amountIn: amountInWei,
             amountOutMinimum: amountOutMinimum,
             sqrtPriceLimitX96: 0
         }, { 
-            gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% buffer
+            gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% gas buffer for safety
         });
 
+        // Wait for transaction confirmation
         await tx.wait();
 
-        // Store swap details for history (you can implement database storage here)
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
+        // Store swap details for history tracking (database implementation can be added here)
         const swapRecord = {
             txHash: tx.hash,
+            chainId: chainId,
             tokenIn: validatedTokenIn,
             tokenOut: validatedTokenOut,
             amountIn: amountIn,
@@ -266,21 +514,24 @@ router.post("/swap", async (req, res) => {
             expectedAmountOut: ethers.formatUnits(expectedAmountOut, await getTokenDecimals(validatedTokenOut)),
             amountOutMinimum: ethers.formatUnits(amountOutMinimum, await getTokenDecimals(validatedTokenOut)),
             recipient: validatedRecipient,
-            fee: fee,
+            fee: validatedFee,
             slippageTolerance: slippageTolerance,
+            deadline: deadline,
+            ttlSec: ttlSec,
             timestamp: new Date().toISOString(),
             status: 'completed'
         };
 
         res.json({ 
             success: true, 
+            chainId: chainId,
             txHash: tx.hash,
             swapDetails: swapRecord
         });
     } catch (err) {
         console.error("Swap error:", err);
         
-        // Handle specific Uniswap errors
+        // Handle specific Uniswap errors with user-friendly messages
         if (err.message.includes("INSUFFICIENT_OUTPUT_AMOUNT")) {
             return res.status(400).json({ error: "Slippage tolerance exceeded - try increasing slippage or reducing amount" });
         }
@@ -301,14 +552,205 @@ router.post("/swap", async (req, res) => {
     }
 });
 
-// Helper endpoint to get supported tokens and their information
-router.get("/tokens", async (req, res) => {
+/**
+ * NON-CUSTODIAL SWAP ENDPOINT (Architecture Improvement)
+ * Returns a populated transaction for the user to sign in their wallet
+ * Eliminates custodial risk by not executing swaps from the backend
+ */
+router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenIn, tokenOut, amountIn, recipient, slippageTolerance = 0.5, fee = 3000, ttlSec = 600 } = req.body;
+
+        // Use default token addresses from environment variables if not provided
+        const tokenInAddress = tokenIn || config.WETH_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS;
+
+        // Validate that we have token addresses
+        if (!tokenInAddress || !tokenOutAddress) {
+            return res.status(400).json({ 
+                error: "Token addresses are required. Either provide them in the request body or set WETH_ADDRESS and WMATIC_ADDRESS in your .env file" 
+            });
+        }
+
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
+            return res.status(400).json({ 
+                error: "Cannot swap token for itself" 
+            });
+        }
+
+        // Validate tokens and recipient address using strict checking
+        let validatedTokenIn, validatedTokenOut, validatedRecipient;
+        try {
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
+            validatedRecipient = validateAndFormatAddress(recipient, "Recipient");
+        } catch (validationError) {
+            return res.status(400).json({ 
+                error: `Token validation failed: ${validationError.message}`,
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
+            });
+        }
+
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate input amount
+        if (!amountIn || isNaN(amountIn) || parseFloat(amountIn) <= 0) {
+            return res.status(400).json({ 
+                error: "Valid amountIn is required and must be greater than 0" 
+            });
+        }
+
+        // Validate slippage tolerance (0.1% to 50%)
+        if (slippageTolerance < 0.1 || slippageTolerance > 50) {
+            return res.status(400).json({ 
+                error: "Slippage tolerance must be between 0.1% and 50%" 
+            });
+        }
+
+        // Calculate deadline with TTL validation
+        let deadline;
+        try {
+            deadline = calculateDeadline(ttlSec);
+        } catch (deadlineError) {
+            return res.status(400).json({ error: deadlineError.message });
+        }
+
+        // Get token decimals dynamically and convert amount to Wei
+        const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
+        const amountInWei = ethers.parseUnits(amountIn, tokenInDecimals);
+
+        // Get quote for slippage calculation and protection - ABORT if quote fails
+        let expectedAmountOut;
+        try {
+            const quoteAmountOut = await quoter.quoteExactInputSingle.staticCall(
+                validatedTokenIn,
+                validatedTokenOut,
+                validatedFee,
+                amountInWei,
+                0
+            );
+            
+            // Reserve sanity check - reject if quote returns 0
+            if (quoteAmountOut <= 0n) {
+                return res.status(400).json({ 
+                    error: "No executable route/liquidity for this pair" 
+                });
+            }
+            
+            expectedAmountOut = quoteAmountOut;
+        } catch (quoteError) {
+            console.error("Quote failed, aborting swap population:", quoteError.message);
+            return res.status(400).json({ 
+                error: "Failed to get quote for slippage protection. Please try again or contact support if the issue persists." 
+            });
+        }
+        
+        // Calculate minimum output amount based on slippage tolerance
+        let amountOutMinimum;
+        try {
+            amountOutMinimum = calcMinOutFromSlippage(expectedAmountOut, slippageTolerance);
+        } catch (slippageError) {
+            return res.status(400).json({ error: slippageError.message });
+        }
+
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
+        // Populate the transaction without executing it
+        const populatedTx = await uniswapRouter.exactInputSingle.populateTransaction({
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            fee: validatedFee,
+            recipient: validatedRecipient,
+            deadline: deadline,
+            amountIn: amountInWei,
+            amountOutMinimum: amountOutMinimum,
+            sqrtPriceLimitX96: 0
+        });
+
+        // Estimate gas for the swap transaction
+        let gasEstimate;
+        try {
+            gasEstimate = await uniswapRouter.exactInputSingle.estimateGas({
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                fee: validatedFee,
+                recipient: validatedRecipient,
+                deadline: deadline,
+                amountIn: amountInWei,
+                amountOutMinimum: amountOutMinimum,
+                sqrtPriceLimitX96: 0
+            });
+        } catch (gasError) {
+            console.warn("Gas estimation failed, using default:", gasError.message);
+            gasEstimate = 300000n; // Default gas limit
+        }
+
+        // Return the populated transaction for the user to sign
+        res.json({
+            success: true,
+            chainId: chainId,
+            populatedTransaction: {
+                ...populatedTx,
+                gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% gas buffer for safety
+            },
+            swapDetails: {
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                amountIn: amountIn,
+                amountInWei: amountInWei.toString(),
+                expectedAmountOut: ethers.formatUnits(expectedAmountOut, await getTokenDecimals(validatedTokenOut)),
+                amountOutMinimum: ethers.formatUnits(amountOutMinimum, await getTokenDecimals(validatedTokenOut)),
+                recipient: validatedRecipient,
+                fee: validatedFee,
+                slippageTolerance: slippageTolerance,
+                deadline: deadline,
+                ttlSec: ttlSec,
+                estimatedGas: gasEstimate.toString()
+            },
+            instructions: "Sign this transaction in your wallet to execute the swap. The transaction will revert if slippage tolerance is exceeded."
+        });
+    } catch (err) {
+        console.error("Swap population error:", err);
+        
+        // Handle specific Uniswap errors with user-friendly messages
+        if (err.message.includes("INSUFFICIENT_LIQUIDITY")) {
+            return res.status(400).json({ error: "Insufficient liquidity for this swap" });
+        }
+        if (err.message.includes("EXCESSIVE_INPUT_AMOUNT")) {
+            return res.status(400).json({ error: "Input amount too high for available liquidity" });
+        }
+        
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET SUPPORTED TOKENS ENDPOINT
+ * Returns information about all supported tokens including name, symbol, and decimals
+ * Useful for populating token selection dropdowns in the frontend
+ */
+router.get("/tokens", ensureBlockchainInitialized, async (req, res) => {
     try {
         const { getAllowedTokens } = await import("../services/tokenValidation.js");
         const allowedTokens = getAllowedTokens();
         
         const tokenInfo = [];
         
+        // Fetch detailed information for each supported token
         for (const tokenAddress of allowedTokens) {
             try {
                 const tokenContract = new ethers.Contract(tokenAddress, [
@@ -341,8 +783,13 @@ router.get("/tokens", async (req, res) => {
             }
         }
         
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+        
         res.json({
             success: true,
+            chainId: chainId,
             tokens: tokenInfo
         });
     } catch (err) {
@@ -351,29 +798,41 @@ router.get("/tokens", async (req, res) => {
     }
 });
 
-// Helper endpoint to get token balance
-router.get("/balance/:tokenAddress/:userAddress", async (req, res) => {
+/**
+ * GET TOKEN BALANCE ENDPOINT
+ * Returns the balance of a specific token for a given user address
+ * Useful for checking user balances before swaps
+ */
+router.get("/balance/:tokenAddress/:userAddress", ensureBlockchainInitialized, async (req, res) => {
     try {
         const { tokenAddress, userAddress } = req.params;
         
-        // Validate addresses
+        // Validate both token and user addresses
         const validatedTokenAddress = validateToken(tokenAddress);
         const validatedUserAddress = validateAndFormatAddress(userAddress, "User");
         
+        // Create token contract instance to query balance and decimals
         const tokenContract = new ethers.Contract(validatedTokenAddress, [
             "function balanceOf(address owner) view returns (uint256)",
             "function decimals() view returns (uint8)"
         ], provider);
         
+        // Fetch balance and decimals simultaneously
         const [balance, decimals] = await Promise.all([
             tokenContract.balanceOf(validatedUserAddress),
             tokenContract.decimals()
         ]);
         
+        // Format balance with proper decimal places
         const formattedBalance = ethers.formatUnits(balance, decimals);
+        
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
         
         res.json({
             success: true,
+            chainId: chainId,
             tokenAddress: validatedTokenAddress,
             userAddress: validatedUserAddress,
             balance: formattedBalance,
@@ -382,6 +841,62 @@ router.get("/balance/:tokenAddress/:userAddress", async (req, res) => {
         });
     } catch (err) {
         console.error("Get balance error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET CHAIN INFO ENDPOINT
+ * Returns information about the current connected blockchain network
+ * Useful for frontend to display current network and supported features
+ */
+router.get("/chain-info", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+        const chainName = network.name;
+        
+        // Get supported chain IDs for comparison
+        const { getSupportedChainIds, isChainSupported } = await import("../config/chains.js");
+        const supportedChains = getSupportedChainIds();
+        const isSupported = isChainSupported(chainId);
+        
+        res.json({
+            success: true,
+            currentChain: {
+                chainId: chainId,
+                name: chainName,
+                isSupported: isSupported
+            },
+            supportedChains: supportedChains,
+            rpcUrl: config.RPC_URL.replace(/\/\/[^\/]+@/, '//***@') // Hide credentials in response
+        });
+    } catch (err) {
+        console.error("Get chain info error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET OPERATIONAL STATUS ENDPOINT
+ * Returns current operational status and limits for custodial swaps
+ * Useful for frontend to check if swaps are enabled and what limits apply
+ */
+router.get("/operational-status", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const status = getOperationalStatus();
+        
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+        
+        res.json({
+            success: true,
+            chainId: chainId,
+            operationalStatus: status
+        });
+    } catch (err) {
+        console.error("Get operational status error:", err);
         res.status(500).json({ error: err.message });
     }
 });

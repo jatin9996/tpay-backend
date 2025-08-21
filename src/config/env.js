@@ -7,8 +7,6 @@ dotenv.config();
 const requiredEnvVars = {
     RPC_URL: process.env.RPC_URL,
     PRIVATE_KEY: process.env.PRIVATE_KEY,
-    ROUTER_ADDRESS: process.env.ROUTER_ADDRESS,
-    POSITION_MANAGER_ADDRESS: process.env.POSITION_MANAGER_ADDRESS,
     PORT: process.env.PORT || 3001
 };
 
@@ -17,7 +15,10 @@ const optionalEnvVars = {
     WMATIC_ADDRESS: process.env.WMATIC_ADDRESS || "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270", 
     POL_ADDRESS: process.env.POL_ADDRESS || "0x455e53CBC86006f77080FAaBcC3B8Ea5d8E7D7eC", 
     USDC_ADDRESS: process.env.USDC_ADDRESS || "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582", 
-    USDT_ADDRESS: process.env.USDT_ADDRESS || "0xc2132D05D31c914a87C6611C10748AEb04B58e8Fc" 
+    USDT_ADDRESS: process.env.USDT_ADDRESS || "0xc2132D05D31c914a87C6611C10748AEb04B58e8Fc",
+    // Chain-specific configuration
+    DEFAULT_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "137", // Default to Polygon
+    FORCE_CHAIN_ID: process.env.FORCE_CHAIN_ID // Force specific chain ID (optional)
 };
 
 // Validate required environment variables

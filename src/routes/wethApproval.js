@@ -1,3 +1,8 @@
+/**
+ * WETH Approval Router - Handles WETH token approval operations for Uniswap V3
+ * Provides endpoints for approving WETH spending, checking allowances, and wallet information
+ */
+
 import express from "express";
 import WETHApprovalService from "../services/wethApproval.js";
 
