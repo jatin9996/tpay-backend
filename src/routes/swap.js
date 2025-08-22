@@ -462,7 +462,13 @@ router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
         }
 
         // Ensure the router has approval to spend the signer's tokens
-        await ensureTokenApproval(validatedTokenIn, wallet.address, config.ROUTER_ADDRESS, amountInWei);
+        // Use the initialized router contract address as spender
+        await ensureTokenApproval(
+            validatedTokenIn,
+            wallet.address,
+            uniswapRouter.target,
+            amountInWei
+        );
 
         // Estimate gas for the swap transaction
         let gasEstimate;
