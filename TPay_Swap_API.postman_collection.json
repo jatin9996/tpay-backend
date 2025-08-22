@@ -1,302 +1,444 @@
 {
 	"info": {
 		"_postman_id": "tpay-swap-api-collection",
-		"name": "TPay Swap API",
-		"description": "Complete collection for testing TPay Swap API endpoints with safety upgrades",
+		"name": "TPay Swap API - Sepolia Testnet",
+		"description": "Complete collection for testing TPay Swap API endpoints with safety upgrades on Sepolia testnet",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
 		{
-			"name": "Get Chain Info",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{base_url}}/dex/chain-info",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "chain-info"]
-				},
-				"description": "Get information about the current connected blockchain network"
-			},
-			"response": []
-		},
-		{
-			"name": "Get Supported Tokens",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{base_url}}/dex/tokens",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "tokens"]
-				},
-				"description": "Get information about all supported tokens including name, symbol, and decimals"
-			},
-			"response": []
-		},
-		{
-			"name": "Get Token Balance",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{base_url}}/dex/balance/{{token_address}}/{{user_address}}",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "balance", "{{token_address}}", "{{user_address}}"],
-					"variable": [
-						{
-							"key": "token_address",
-							"value": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
-							"description": "WETH address on Polygon"
+			"name": "🌐 Basic Endpoints",
+			"item": [
+				{
+					"name": "Get Chain Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/dex/chain-info",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "chain-info"]
 						},
-						{
-							"key": "user_address",
-							"value": "0x742d35Cc6634C0532925a3b8D4C9Db96C4b4d8b6",
-							"description": "Example user address"
-						}
-					]
+						"description": "Get information about the current connected blockchain network"
+					},
+					"response": []
 				},
-				"description": "Get the balance of a specific token for a given user address"
-			},
-			"response": []
+				{
+					"name": "Get Supported Tokens",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/dex/tokens",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "tokens"]
+						},
+						"description": "Get information about all supported tokens including name, symbol, and decimals"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Token Balance",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/dex/balance/{{token_address}}/{{user_address}}",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "balance", "{{token_address}}", "{{user_address}}"],
+							"variable": [
+								{
+									"key": "token_address",
+									"value": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
+									"description": "WETH address on Sepolia"
+								},
+								{
+									"key": "user_address",
+									"value": "0x742d35Cc6634C0532925a3b8D4C9Db96C4b4d8b6",
+									"description": "Example user address"
+								}
+							]
+						},
+						"description": "Get the balance of a specific token for a given user address"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Operational Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/dex/operational-status",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "operational-status"]
+						},
+						"description": "Get current operational status and limits for custodial swaps"
+					},
+					"response": []
+				}
+			]
 		},
 		{
-			"name": "Get Operational Status",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{base_url}}/dex/operational-status",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "operational-status"]
+			"name": "💰 Quote System Testing",
+			"item": [
+				{
+					"name": "Get Quote - WETH to USDC",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"fee\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/quote",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "quote"]
+						},
+						"description": "Get price quote for WETH to USDC swap"
+					},
+					"response": []
 				},
-				"description": "Get current operational status and limits for custodial swaps"
-			},
-			"response": []
+				{
+					"name": "Get Quote - Different Fee Tier (500)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"fee\": 500\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/quote",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "quote"]
+						},
+						"description": "Get quote with 0.05% fee tier"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Quote - High Fee Tier (10000)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"fee\": 10000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/quote",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "quote"]
+						},
+						"description": "Get quote with 1% fee tier"
+					},
+					"response": []
+				}
+			]
 		},
 		{
-			"name": "Get Quote",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"1.0\",\n    \"fee\": 3000\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+			"name": "🚨 Validation Testing (Error Cases)",
+			"item": [
+				{
+					"name": "Get Quote - Invalid Fee (2000)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"fee\": 2000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/quote",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "quote"]
+						},
+						"description": "Test fee validation - should return 400 error for invalid fee 2000"
+					},
+					"response": []
 				},
-				"url": {
-					"raw": "{{base_url}}/dex/quote",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "quote"]
+				{
+					"name": "Get Quote - Same Token (WETH to WETH)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{weth_address}}\",\n    \"amountIn\": \"0.01\",\n    \"fee\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/quote",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "quote"]
+						},
+						"description": "Test same token validation - should return 400 error for swapping token for itself"
+					},
+					"response": []
 				},
-				"description": "Get price quote for token swap without executing the transaction"
-			},
-			"response": []
+				{
+					"name": "Get Quote - Invalid Amount (0)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0\",\n    \"fee\": 3000\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/quote",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "quote"]
+						},
+						"description": "Test amount validation - should return 400 error for zero amount"
+					},
+					"response": []
+				}
+			]
 		},
 		{
-			"name": "Get Quote - Custom Fee",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"0.5\",\n    \"fee\": 500\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+			"name": "🔄 Swap Population Testing (Non-Custodial)",
+			"item": [
+				{
+					"name": "Populate Swap - WETH to USDC",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 600\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/swap/populate",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "swap", "populate"]
+						},
+						"description": "Get populated transaction for user to sign (non-custodial approach)"
+					},
+					"response": []
 				},
-				"url": {
-					"raw": "{{base_url}}/dex/quote",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "quote"]
-				},
-				"description": "Get quote with 0.05% fee tier"
-			},
-			"response": []
+				{
+					"name": "Populate Swap - Different Fee (500)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 500,\n    \"ttlSec\": 600\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/swap/populate",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "swap", "populate"]
+						},
+						"description": "Test swap population with 0.05% fee tier"
+					},
+					"response": []
+				}
+			]
 		},
 		{
-			"name": "Get Quote - Invalid Fee (Test Validation)",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"1.0\",\n    \"fee\": 2000\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
+			"name": "⚠️ Validation Testing (Operational Limits)",
+			"item": [
+				{
+					"name": "Populate Swap - High Slippage (10%)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 10.0,\n    \"fee\": 3000,\n    \"ttlSec\": 600\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/swap/populate",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "swap", "populate"]
+						},
+						"description": "Test slippage validation - should return 400 error for slippage above 5% (operational limit)"
+					},
+					"response": []
 				},
-				"url": {
-					"raw": "{{base_url}}/dex/quote",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "quote"]
+				{
+					"name": "Populate Swap - Short TTL (30s)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 30\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/swap/populate",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "swap", "populate"]
+						},
+						"description": "Test TTL validation - should return 400 error for TTL below 60 seconds (operational limit)"
+					},
+					"response": []
 				},
-				"description": "Test fee validation - should return 400 error for invalid fee 2000"
-			},
-			"response": []
+				{
+					"name": "Populate Swap - Long TTL (7200s)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.01\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 7200\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/swap/populate",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "swap", "populate"]
+						},
+						"description": "Test TTL validation - should return 400 error for TTL above 3600 seconds (operational limit)"
+					},
+					"response": []
+				}
+			]
 		},
 		{
-			"name": "Get Quote - Same Token (Test Validation)",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{weth_address}}\",\n    \"amountIn\": \"1.0\",\n    \"fee\": 3000\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/dex/quote",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "quote"]
-				},
-				"description": "Test same token validation - should return 400 error for swapping token for itself"
-			},
-			"response": []
-		},
-		{
-			"name": "Populate Swap Transaction (Non-Custodial)",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"0.1\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 600\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/dex/swap/populate",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "swap", "populate"]
-				},
-				"description": "Get populated transaction for user to sign (non-custodial approach)"
-			},
-			"response": []
-		},
-		{
-			"name": "Populate Swap - High Slippage (Test Validation)",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"0.1\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 10.0,\n    \"fee\": 3000,\n    \"ttlSec\": 600\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/dex/swap/populate",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "swap", "populate"]
-				},
-				"description": "Test slippage validation - should return 400 error for slippage above 5% (operational limit)"
-			},
-			"response": []
-		},
-		{
-			"name": "Populate Swap - Short TTL (Test Validation)",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"0.1\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 30\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/dex/swap/populate",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "swap", "populate"]
-				},
-				"description": "Test TTL validation - should return 400 error for TTL below 60 seconds (operational limit)"
-			},
-			"response": []
-		},
-		{
-			"name": "Execute Swap (Custodial)",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{wmatic_address}}\",\n    \"amountIn\": \"0.01\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 600\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/dex/swap",
-					"host": ["{{base_url}}"],
-					"path": ["dex", "swap"]
-				},
-				"description": "Execute swap transaction (custodial - requires funded private key and approvals)"
-			},
-			"response": []
+			"name": "⚡ Custodial Swap Testing (Optional)",
+			"item": [
+				{
+					"name": "Execute Swap - WETH to USDC",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"tokenIn\": \"{{weth_address}}\",\n    \"tokenOut\": \"{{usdc_address}}\",\n    \"amountIn\": \"0.001\",\n    \"recipient\": \"{{user_address}}\",\n    \"slippageTolerance\": 0.5,\n    \"fee\": 3000,\n    \"ttlSec\": 600\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/dex/swap",
+							"host": ["{{base_url}}"],
+							"path": ["dex", "swap"]
+						},
+						"description": "Execute swap transaction (custodial - requires funded private key and approvals)"
+					},
+					"response": []
+				}
+			]
 		}
 	],
 	"event": [
@@ -310,10 +452,10 @@
 					"    pm.environment.set('base_url', 'http://localhost:3001');",
 					"}",
 					"if (!pm.environment.get('weth_address')) {",
-					"    pm.environment.set('weth_address', '0xA6FA4fB5f76172d178d61B04b0ecd319C5d1C0aa');",
+					"    pm.environment.set('weth_address', '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9');",
 					"}",
-					"if (!pm.environment.get('wmatic_address')) {",
-					"    pm.environment.set('wmatic_address', '0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889');",
+					"if (!pm.environment.set('usdc_address')) {",
+					"    pm.environment.set('usdc_address', '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');",
 					"}",
 					"if (!pm.environment.get('user_address')) {",
 					"    pm.environment.set('user_address', '0x742d35Cc6634C0532925a3b8D4C9Db96C4b4d8b6');",
@@ -330,12 +472,12 @@
 		},
 		{
 			"key": "weth_address",
-			"value": "0xA6FA4fB5f76172d178d61B04b0ecd319C5d1C0aa",
+			"value": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
 			"type": "string"
 		},
 		{
-			"key": "wmatic_address",
-			"value": "0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889",
+			"key": "usdc_address",
+			"value": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
 			"type": "string"
 		},
 		{
