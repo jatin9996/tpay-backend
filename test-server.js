@@ -16,8 +16,8 @@ const ENDPOINTS = [
 ];
 
 const TEST_QUOTE = {
-    tokenIn: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // WETH
-    tokenOut: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
+    tokenIn: '0xA6FA4fB5f76172d178d61B04b0ecd319C5d1C0aa', // WETH on Mumbai
+    tokenOut: '0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889', // WMATIC on Mumbai
     amountIn: '0.1',
     fee: 3000
 };

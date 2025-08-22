@@ -21,13 +21,65 @@
 
 import express from "express";
 import { ethers } from "ethers";
-// Import Uniswap V3 contract ABIs for swap operations
-import routerABI from "@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json" assert { type: "json" };
-import quoterABI from "@uniswap/v3-periphery/artifacts/contracts/Quoter.sol/Quoter.json" assert { type: "json" };
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import config from "../config/env.js";
 import { getUniswapAddresses } from "../config/chains.js";
 import { validateToken } from "../services/tokenValidation.js";
 import { validateOperationalLimits, getOperationalStatus } from "../config/operationalLimits.js";
+
+// Get current directory for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Read Uniswap V3 contract ABIs for swap operations
+const routerABI = JSON.parse(fs.readFileSync(path.join(__dirname, "../../node_modules/@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json"), 'utf8'));
+
+// Create a minimal Quoter ABI since it's not included in the standard package
+const quoterABI = {
+  abi: [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "tokenIn",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "tokenOut",
+          "type": "address"
+        },
+        {
+          "internalType": "uint24",
+          "name": "fee",
+          "type": "uint24"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amountIn",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint160",
+          "name": "sqrtPriceLimitX96",
+          "type": "uint160"
+        }
+      ],
+      "name": "quoteExactInputSingle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "amountOut",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ]
+};
 
 const router = express.Router();
 

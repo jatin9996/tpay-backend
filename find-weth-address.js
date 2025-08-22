@@ -6,18 +6,24 @@ dotenv.config();
 
 // Common WETH addresses for different networks
 const WETH_ADDRESSES = {
-    "Polygon Mainnet": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
-    "Polygon Mumbai Testnet": "0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889",
-    "Polygon Amoy Testnet": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", // Same as mainnet
-    "Base Mainnet": "0x4200000000000000000000000000000000000006",
-    "Base Sepolia Testnet": "0x4200000000000000000000000000000000000006",
+    // Ethereum networks (Primary for ERC-20 testing)
     "Ethereum Mainnet": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-    "Ethereum Sepolia Testnet": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14"
+    "Ethereum Sepolia Testnet": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
+    "Ethereum Goerli Testnet": "0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6",
+    
+    // Polygon networks (Alternative)
+    "Polygon Mainnet": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    "Polygon Mumbai Testnet": "0xA6FA4fB5f76172d178d61B04b0ecd319C5d1C0aa",
+    "Polygon Amoy Testnet": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", // Same as mainnet
+    
+    // Other networks
+    "Base Mainnet": "0x4200000000000000000000000000000000000006",
+    "Base Sepolia Testnet": "0x4200000000000000000000000000000000000006"
 };
 
 const main = async () => {
     try {
-        const RPC_URL = process.env.RPC_URL || "https://rpc-amoy.polygon.technology/";
+        const RPC_URL = process.env.RPC_URL || "https://sepolia.infura.io/v3/YOUR_API_KEY";
         
         console.log("🔍 Finding WETH address for your network...");
         console.log(`🌐 RPC URL: ${RPC_URL}`);
@@ -34,7 +40,16 @@ const main = async () => {
         // Try to identify the network and suggest WETH address
         let suggestedWETH = null;
         
-        if (network.chainId === 137) {
+        if (network.chainId === 1) {
+            suggestedWETH = WETH_ADDRESSES["Ethereum Mainnet"];
+            console.log("🎯 Detected: Ethereum Mainnet");
+        } else if (network.chainId === 11155111) {
+            suggestedWETH = WETH_ADDRESSES["Ethereum Sepolia Testnet"];
+            console.log("🎯 Detected: Ethereum Sepolia Testnet");
+        } else if (network.chainId === 5) { // Goerli Testnet
+            suggestedWETH = WETH_ADDRESSES["Ethereum Goerli Testnet"];
+            console.log("🎯 Detected: Ethereum Goerli Testnet");
+        } else if (network.chainId === 137) {
             suggestedWETH = WETH_ADDRESSES["Polygon Mainnet"];
             console.log("🎯 Detected: Polygon Mainnet");
         } else if (network.chainId === 80001) {
@@ -49,12 +64,6 @@ const main = async () => {
         } else if (network.chainId === 84532) {
             suggestedWETH = WETH_ADDRESSES["Base Sepolia Testnet"];
             console.log("🎯 Detected: Base Sepolia Testnet");
-        } else if (network.chainId === 1) {
-            suggestedWETH = WETH_ADDRESSES["Ethereum Mainnet"];
-            console.log("🎯 Detected: Ethereum Mainnet");
-        } else if (network.chainId === 11155111) {
-            suggestedWETH = WETH_ADDRESSES["Ethereum Sepolia Testnet"];
-            console.log("🎯 Detected: Ethereum Sepolia Testnet");
         } else {
             console.log("⚠️  Unknown network - checking common addresses...");
         }

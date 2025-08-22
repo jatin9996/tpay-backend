@@ -12,8 +12,29 @@ export const UNISWAP_V3_ADDRESSES = {
         positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
         factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984'
     },
-    // Polygon (Matic)
+    // Ethereum Testnet (Sepolia) - Primary for ERC-20 testing
+    '11155111': {
+        quoter: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6',
+        router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+        positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+        factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984'
+    },
+    // Ethereum Testnet (Goerli) - Legacy
+    '5': {
+        quoter: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6',
+        router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+        positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+        factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984'
+    },
+    // Polygon (Matic) - Alternative
     '137': {
+        quoter: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
+        router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+        positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+        factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984'
+    },
+    // Polygon Testnet (Mumbai) - Alternative testnet
+    '80001': {
         quoter: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
         router: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
         positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',

@@ -7,7 +7,10 @@
     "start": "nodemon src/index.js",
     "test": "mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'",
     "test:watch": "mocha --import @babel/register --import test/setup.js --watch 'test/**/*.test.js'",
-    "test:coverage": "nyc mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'"
+    "test:coverage": "nyc mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'",
+    "test:ethereum": "node test-ethereum-config.js",
+    "test:chains": "node test-chain-config.js",
+    "test:tokens": "node test-permissionless-tokens.js"
   },
   "keywords": [],
   "author": "",

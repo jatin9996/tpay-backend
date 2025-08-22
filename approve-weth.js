@@ -5,9 +5,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Configuration
-const RPC_URL = process.env.RPC_URL || "https://rpc-amoy.polygon.technology/";
+const RPC_URL = process.env.RPC_URL || "https://sepolia.infura.io/v3/YOUR_API_KEY";
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const WETH_ADDRESS = process.env.WETH_ADDRESS || "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619";
+const WETH_ADDRESS = process.env.WETH_ADDRESS || "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 const ROUTER_ADDRESS = process.env.ROUTER_ADDRESS;
 
 // Validate required environment variables

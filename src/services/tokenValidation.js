@@ -1,17 +1,100 @@
 import { ethers } from "ethers";
 import config from "../config/env.js";
 
-// Define allowed tokens as raw addresses - validation will happen at runtime
-const allowedTokenAddresses = [
+// Essential test tokens - pre-whitelisted for testing
+const essentialTokenAddresses = [
     config.WETH_ADDRESS,
-    config.POL_ADDRESS,
     config.USDC_ADDRESS,
-    config.WMATIC_ADDRESS,
     config.USDT_ADDRESS
 ];
 
-// Cache for validated addresses
+// Dynamic token registry for permissionless listings
+let dynamicTokenRegistry = new Set();
 let validatedTokens = null;
+
+/**
+ * Adds a new token to the dynamic registry (permissionless listing)
+ * @param {string} tokenAddress - The token address to add
+ * @returns {Object} - Result of the operation
+ */
+export function addTokenToRegistry(tokenAddress) {
+    try {
+        if (!tokenAddress) {
+            throw new Error("Token address is required");
+        }
+        
+        const formattedAddress = ethers.getAddress(tokenAddress);
+        
+        // Check if token is already in the registry
+        if (dynamicTokenRegistry.has(formattedAddress)) {
+            return {
+                success: false,
+                message: "Token already exists in registry",
+                address: formattedAddress
+            };
+        }
+        
+        // Add to dynamic registry
+        dynamicTokenRegistry.add(formattedAddress);
+        
+        // Clear cache to force refresh
+        validatedTokens = null;
+        
+        return {
+            success: true,
+            message: "Token added to registry successfully",
+            address: formattedAddress
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: `Failed to add token: ${error.message}`,
+            address: tokenAddress
+        };
+    }
+}
+
+/**
+ * Removes a token from the dynamic registry
+ * @param {string} tokenAddress - The token address to remove
+ * @returns {Object} - Result of the operation
+ */
+export function removeTokenFromRegistry(tokenAddress) {
+    try {
+        if (!tokenAddress) {
+            throw new Error("Token address is required");
+        }
+        
+        const formattedAddress = ethers.getAddress(tokenAddress);
+        
+        // Check if token is in the registry
+        if (!dynamicTokenRegistry.has(formattedAddress)) {
+            return {
+                success: false,
+                message: "Token not found in registry",
+                address: formattedAddress
+            };
+        }
+        
+        // Remove from dynamic registry
+        dynamicTokenRegistry.delete(formattedAddress);
+        
+        // Clear cache to force refresh
+        validatedTokens = null;
+        
+        return {
+            success: true,
+            message: "Token removed from registry successfully",
+            address: formattedAddress
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: `Failed to remove token: ${error.message}`,
+            address: tokenAddress
+        };
+    }
+}
 
 /**
  * Gets the list of validated token addresses, initializing the cache if needed
@@ -20,19 +103,33 @@ let validatedTokens = null;
 function getValidatedTokens() {
     if (validatedTokens === null) {
         validatedTokens = [];
-        for (const address of allowedTokenAddresses) {
+        
+        // Add essential tokens
+        for (const address of essentialTokenAddresses) {
             try {
                 if (address && typeof address === 'string' && address.trim() !== '') {
                     const formatted = ethers.getAddress(address);
                     validatedTokens.push(formatted);
                 }
             } catch (error) {
-                console.warn(`Invalid token address in config: ${address}`, error.message);
+                console.warn(`Invalid essential token address in config: ${address}`, error.message);
+            }
+        }
+        
+        // Add dynamic tokens
+        for (const address of dynamicTokenRegistry) {
+            try {
+                const formatted = ethers.getAddress(address);
+                if (!validatedTokens.includes(formatted)) {
+                    validatedTokens.push(formatted);
+                }
+            } catch (error) {
+                console.warn(`Invalid dynamic token address: ${address}`, error.message);
             }
         }
         
         if (validatedTokens.length === 0) {
-            console.warn("No valid token addresses found in configuration. Please check your environment variables.");
+            console.warn("No valid token addresses found. Please check your configuration.");
         }
     }
     return validatedTokens;
@@ -58,11 +155,11 @@ function validateToken(address) {
         const allowedTokens = getValidatedTokens();
         
         if (allowedTokens.length === 0) {
-            throw new Error("No valid tokens configured. Please check your environment variables.");
+            throw new Error("No valid tokens configured. Please check your configuration.");
         }
         
         if (!allowedTokens.includes(formatted)) {
-            throw new Error(`Token ${address} not supported. Allowed tokens: ${allowedTokens.join(", ")}`);
+            throw new Error(`Token ${address} not supported. Supported tokens: ${allowedTokens.join(", ")}`);
         }
         return formatted;
     } catch (error) {
@@ -95,6 +192,25 @@ function isTokenAllowed(address) {
     } catch {
         return false;
     }
+}
+
+/**
+ * Gets the current token registry status
+ * @returns {Object} - Registry status information
+ */
+export function getTokenRegistryStatus() {
+    const essentialTokens = essentialTokenAddresses.filter(addr => addr && addr.trim() !== '');
+    const dynamicTokens = Array.from(dynamicTokenRegistry);
+    
+    return {
+        essentialTokens: essentialTokens.length,
+        dynamicTokens: dynamicTokens.length,
+        totalTokens: essentialTokens.length + dynamicTokens.length,
+        registry: {
+            essential: essentialTokens,
+            dynamic: dynamicTokens
+        }
+    };
 }
 
 export {
