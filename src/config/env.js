@@ -11,6 +11,9 @@ const requiredEnvVars = {
 };
 
 const optionalEnvVars = {
+    // MongoDB Configuration
+    MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/tpay',
+    
     // Essential test tokens (Sepolia) - Only 2-3 tokens for testing
     WETH_ADDRESS: process.env.WETH_ADDRESS || "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", 
     USDC_ADDRESS: process.env.USDC_ADDRESS || "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", 

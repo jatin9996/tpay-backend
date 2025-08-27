@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "nodemon src/index.js",
+    "seed": "node src/scripts/seedDatabase.js",
+    "test:search": "node test-search.js",
     "test": "mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'",
     "test:watch": "mocha --import @babel/register --import test/setup.js --watch 'test/**/*.test.js'",
     "test:coverage": "nyc mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'",
@@ -25,6 +27,8 @@
     "dotenv": "^17.2.1",
     "ethers": "^6.15.0",
     "express": "^5.1.0",
+    "mongodb": "^6.3.0",
+    "mongoose": "^8.0.0",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
