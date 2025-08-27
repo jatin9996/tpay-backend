@@ -15,6 +15,8 @@ const optionalEnvVars = {
     WETH_ADDRESS: process.env.WETH_ADDRESS || "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", 
     USDC_ADDRESS: process.env.USDC_ADDRESS || "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", 
     USDT_ADDRESS: process.env.USDT_ADDRESS || "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
+    // Optional WMATIC address (used as a common tokenOut default on Polygon chains)
+    WMATIC_ADDRESS: process.env.WMATIC_ADDRESS,
     // Chain-specific configuration - Default to Ethereum testnet (Sepolia)
     DEFAULT_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "11155111", // Default to Sepolia
     FORCE_CHAIN_ID: process.env.FORCE_CHAIN_ID // Force specific chain ID (optional)

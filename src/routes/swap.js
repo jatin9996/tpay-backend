@@ -28,6 +28,7 @@ import config from "../config/env.js";
 import { getUniswapAddresses } from "../config/chains.js";
 import { validateToken } from "../services/tokenValidation.js";
 import { validateOperationalLimits, getOperationalStatus } from "../config/operationalLimits.js";
+import { serializeBigInts } from "../utils/bigIntSerializer.js";
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -283,7 +284,8 @@ router.post("/quote", ensureBlockchainInitialized, async (req, res) => {
 
         // Use default token addresses from environment variables if not provided
         const tokenInAddress = tokenIn || config.WETH_ADDRESS;
-        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS;
+        // Prefer WMATIC when present (Polygon), otherwise fall back to USDC as a common quote asset
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
 
         // Validate that we have token addresses
         if (!tokenInAddress || !tokenOutAddress) {
@@ -359,7 +361,7 @@ router.post("/quote", ensureBlockchainInitialized, async (req, res) => {
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
 
-        res.json({
+        const response = {
             success: true,
             chainId: chainId,
             tokenIn: validatedTokenIn,
@@ -369,7 +371,11 @@ router.post("/quote", ensureBlockchainInitialized, async (req, res) => {
             fee: validatedFee,
             tokenInDecimals: tokenInDecimals,
             tokenOutDecimals: tokenOutDecimals
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Quote error:", err);
         
@@ -379,6 +385,13 @@ router.post("/quote", ensureBlockchainInitialized, async (req, res) => {
         }
         if (err.message.includes("EXCESSIVE_INPUT_AMOUNT")) {
             return res.status(400).json({ error: "Input amount too high for available liquidity" });
+        }
+        // Ethers BAD_DATA usually means wrong contract for chain or method reverted silently
+        if (err.code === 'BAD_DATA' || /could not decode result data/i.test(err.message)) {
+            return res.status(400).json({ 
+                error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+            });
         }
         
         res.status(500).json({ error: err.message });
@@ -396,7 +409,7 @@ router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
 
         // Use default token addresses from environment variables if not provided
         const tokenInAddress = tokenIn || config.WETH_ADDRESS;
-        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
 
         // Validate that we have token addresses
         if (!tokenInAddress || !tokenOutAddress) {
@@ -500,9 +513,13 @@ router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
             expectedAmountOut = quoteAmountOut;
         } catch (quoteError) {
             console.error("Quote failed, aborting swap:", quoteError.message);
-            return res.status(400).json({ 
-                error: "Failed to get quote for slippage protection. Please try again or contact support if the issue persists." 
-            });
+            if (quoteError.code === 'BAD_DATA' || /could not decode result data/i.test(quoteError.message)) {
+                return res.status(400).json({ 
+                    error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                    hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+                });
+            }
+            return res.status(400).json({ error: "Failed to get quote for slippage protection. Please try again or contact support if the issue persists." });
         }
         
         // Calculate minimum output amount based on slippage tolerance
@@ -580,12 +597,16 @@ router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
             status: 'completed'
         };
 
-        res.json({ 
+        const response = { 
             success: true, 
             chainId: chainId,
             txHash: tx.hash,
             swapDetails: swapRecord
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Swap error:", err);
         
@@ -621,7 +642,7 @@ router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
 
         // Use default token addresses from environment variables if not provided
         const tokenInAddress = tokenIn || config.WETH_ADDRESS;
-        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
 
         // Validate that we have token addresses
         if (!tokenInAddress || !tokenOutAddress) {
@@ -710,9 +731,13 @@ router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
             expectedAmountOut = quoteAmountOut;
         } catch (quoteError) {
             console.error("Quote failed, aborting swap population:", quoteError.message);
-            return res.status(400).json({ 
-                error: "Failed to get quote for slippage protection. Please try again or contact support if the issue persists." 
-            });
+            if (quoteError.code === 'BAD_DATA' || /could not decode result data/i.test(quoteError.message)) {
+                return res.status(400).json({ 
+                    error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                    hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+                });
+            }
+            return res.status(400).json({ error: "Failed to get quote for slippage protection. Please try again or contact support if the issue persists." });
         }
         
         // Calculate minimum output amount based on slippage tolerance
@@ -758,7 +783,7 @@ router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
         }
 
         // Return the populated transaction for the user to sign
-        res.json({
+        const response = {
             success: true,
             chainId: chainId,
             populatedTransaction: {
@@ -780,7 +805,11 @@ router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
                 estimatedGas: gasEstimate.toString()
             },
             instructions: "Sign this transaction in your wallet to execute the swap. The transaction will revert if slippage tolerance is exceeded."
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Swap population error:", err);
         
@@ -845,11 +874,15 @@ router.get("/tokens", ensureBlockchainInitialized, async (req, res) => {
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
         
-        res.json({
+        const response = {
             success: true,
             chainId: chainId,
             tokens: tokenInfo
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Get tokens error:", err);
         res.status(500).json({ error: err.message });
@@ -888,7 +921,7 @@ router.get("/balance/:tokenAddress/:userAddress", ensureBlockchainInitialized, a
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
         
-        res.json({
+        const response = {
             success: true,
             chainId: chainId,
             tokenAddress: validatedTokenAddress,
@@ -896,7 +929,11 @@ router.get("/balance/:tokenAddress/:userAddress", ensureBlockchainInitialized, a
             balance: formattedBalance,
             balanceWei: balance.toString(),
             decimals: decimals
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Get balance error:", err);
         res.status(500).json({ error: err.message });
@@ -919,7 +956,7 @@ router.get("/chain-info", ensureBlockchainInitialized, async (req, res) => {
         const supportedChains = getSupportedChainIds();
         const isSupported = isChainSupported(chainId);
         
-        res.json({
+        const response = {
             success: true,
             currentChain: {
                 chainId: chainId,
@@ -928,7 +965,11 @@ router.get("/chain-info", ensureBlockchainInitialized, async (req, res) => {
             },
             supportedChains: supportedChains,
             rpcUrl: config.RPC_URL.replace(/\/\/[^\/]+@/, '//***@') // Hide credentials in response
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Get chain info error:", err);
         res.status(500).json({ error: err.message });
@@ -948,11 +989,15 @@ router.get("/operational-status", ensureBlockchainInitialized, async (req, res) 
         const network = await provider.getNetwork();
         const chainId = network.chainId.toString();
         
-        res.json({
+        const response = {
             success: true,
             chainId: chainId,
             operationalStatus: status
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (err) {
         console.error("Get operational status error:", err);
         res.status(500).json({ error: err.message });

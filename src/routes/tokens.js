@@ -12,6 +12,7 @@ import {
     removeTokenFromRegistry,
     getTokenRegistryStatus
 } from "../services/tokenValidation.js";
+import { serializeBigInts } from "../utils/bigIntSerializer.js";
 
 const router = express.Router();
 
@@ -25,12 +26,16 @@ router.get("/allowed", (req, res) => {
         const allowedTokens = getAllowedTokens();
         const registryStatus = getTokenRegistryStatus();
         
-        res.json({
+        const response = {
             success: true,
             allowedTokens,
             count: allowedTokens.length,
             registry: registryStatus
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -50,13 +55,17 @@ router.get("/validate/:address", (req, res) => {
         const isValid = isTokenAllowed(address);
         const registryStatus = getTokenRegistryStatus();
         
-        res.json({
+        const response = {
             success: true,
             address,
             isValid,
             message: isValid ? "Token is allowed" : "Token is not allowed",
             registry: registryStatus
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -83,12 +92,16 @@ router.post("/add", (req, res) => {
         const result = addTokenToRegistry(address);
         
         if (result.success) {
-            res.json({
+            const response = {
                 success: true,
                 message: result.message,
                 address: result.address,
                 registry: getTokenRegistryStatus()
-            });
+            };
+            
+            // Serialize any BigInt values before sending response
+            const serializedResponse = serializeBigInts(response);
+            res.json(serializedResponse);
         } else {
             res.status(400).json({
                 success: false,
@@ -115,12 +128,16 @@ router.delete("/remove/:address", (req, res) => {
         const result = removeTokenFromRegistry(address);
         
         if (result.success) {
-            res.json({
+            const response = {
                 success: true,
                 message: result.message,
                 address: result.address,
                 registry: getTokenRegistryStatus()
-            });
+            };
+            
+            // Serialize any BigInt values before sending response
+            const serializedResponse = serializeBigInts(response);
+            res.json(serializedResponse);
         } else {
             res.status(400).json({
                 success: false,
@@ -142,11 +159,15 @@ router.get("/registry/status", (req, res) => {
     try {
         const registryStatus = getTokenRegistryStatus();
         
-        res.json({
+        const response = {
             success: true,
             registry: registryStatus,
             message: "Token registry status retrieved successfully"
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -160,12 +181,16 @@ router.get("/essential", (req, res) => {
     try {
         const registryStatus = getTokenRegistryStatus();
         
-        res.json({
+        const response = {
             success: true,
             essentialTokens: registryStatus.registry.essential,
             count: registryStatus.essentialTokens,
             message: "Essential tokens retrieved successfully"
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -179,12 +204,16 @@ router.get("/dynamic", (req, res) => {
     try {
         const registryStatus = getTokenRegistryStatus();
         
-        res.json({
+        const response = {
             success: true,
             dynamicTokens: registryStatus.registry.dynamic,
             count: registryStatus.dynamicTokens,
             message: "Dynamic tokens retrieved successfully"
-        });
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
