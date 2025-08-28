@@ -9,6 +9,7 @@ import poolRoutes from "./routes/pools.js";
 import tokenRoutes from "./routes/tokens.js";
 import searchRoutes from "./routes/search.js";
 import wethApprovalRoutes from "./routes/wethApproval.js";
+import quoteRoutes from "./routes/quote.js";
 import tokensTrendingRoutes from "./routes/tokensTrending.js";
 import { runAggregatorPeriodically } from "./jobs/swaps-24h-aggregate.js";
 
@@ -27,6 +28,7 @@ app.use("/tokens", tokenRoutes);
 app.use("/tokens", tokensTrendingRoutes);
 app.use("/search", searchRoutes);
 app.use("/api/weth", wethApprovalRoutes);
+app.use("/quote", quoteRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`Server running on port ${config.PORT}`);
