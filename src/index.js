@@ -9,6 +9,8 @@ import poolRoutes from "./routes/pools.js";
 import tokenRoutes from "./routes/tokens.js";
 import searchRoutes from "./routes/search.js";
 import wethApprovalRoutes from "./routes/wethApproval.js";
+import tokensTrendingRoutes from "./routes/tokensTrending.js";
+import { runAggregatorPeriodically } from "./jobs/swaps-24h-aggregate.js";
 
 const app = express();
 app.use(cors());
@@ -22,6 +24,7 @@ app.use("/dex", swapRoutes);
 app.use("/liquidity", liquidityRoutes);
 app.use("/data", poolRoutes);
 app.use("/tokens", tokenRoutes);
+app.use("/tokens", tokensTrendingRoutes);
 app.use("/search", searchRoutes);
 app.use("/api/weth", wethApprovalRoutes);
 
@@ -30,3 +33,6 @@ app.listen(config.PORT, () => {
 });
 
 export default app;
+
+// Start background aggregator (refresh every 2 minutes)
+runAggregatorPeriodically(120_000);
