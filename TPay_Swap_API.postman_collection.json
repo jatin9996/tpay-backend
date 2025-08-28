@@ -439,6 +439,97 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "🔎 Search",
+			"item": [
+				{
+					"name": "Combined Search",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/search?q=WETH&limit=5",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search"
+							],
+							"query": [
+								{ "key": "q", "value": "WETH" },
+								{ "key": "limit", "value": "5" }
+							]
+						},
+						"description": "Combined search across tokens and pools"
+					},
+					"response": []
+				},
+				{
+					"name": "Tokens-only Search",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/search/tokens?q=USD&limit=10",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search",
+								"tokens"
+							],
+							"query": [
+								{ "key": "q", "value": "USD" },
+								{ "key": "limit", "value": "10" }
+							]
+						},
+						"description": "Search only tokens (e.g., USDC/USDT)"
+					},
+					"response": []
+				},
+				{
+					"name": "Pools-only Search",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/search/pools?q=WETH&limit=5",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search",
+								"pools"
+							],
+							"query": [
+								{ "key": "q", "value": "WETH" },
+								{ "key": "limit", "value": "5" }
+							]
+						},
+						"description": "Search only pools (token symbol match in token0/token1)"
+					},
+					"response": []
+				},
+				{
+					"name": "Empty State (no query)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/search",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"search"
+							]
+						},
+						"description": "Returns default suggestions when no `q` is provided"
+					},
+					"response": []
+				}
+			]
 		}
 	],
 	"event": [
@@ -454,7 +545,7 @@
 					"if (!pm.environment.get('weth_address')) {",
 					"    pm.environment.set('weth_address', '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9');",
 					"}",
-					"if (!pm.environment.set('usdc_address')) {",
+					"if (!pm.environment.get('usdc_address')) {",
 					"    pm.environment.set('usdc_address', '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');",
 					"}",
 					"if (!pm.environment.get('user_address')) {",
