@@ -12,7 +12,8 @@
     "test:coverage": "nyc mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'",
     "test:ethereum": "node test-ethereum-config.js",
     "test:chains": "node test-chain-config.js",
-    "test:tokens": "node test-permissionless-tokens.js"
+    "test:tokens": "node test-permissionless-tokens.js",
+    "test:exact-out": "node test-exact-out.js"
   },
   "keywords": [],
   "author": "",
