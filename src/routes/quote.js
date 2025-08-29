@@ -40,6 +40,26 @@ const quoterABI = {
       outputs: [ { internalType: "uint256", name: "amountOut", type: "uint256" } ],
       stateMutability: "nonpayable",
       type: "function"
+    },
+    {
+      inputs: [
+        { internalType: "address", name: "tokenIn", type: "address" },
+        { internalType: "address", name: "tokenOut", type: "address" },
+        { internalType: "uint24", name: "fee", type: "uint24" },
+        { internalType: "uint256", name: "amountOut", type: "uint256" },
+        { internalType: "uint160", name: "sqrtPriceLimitX96", type: "uint160" }
+      ],
+      name: "quoteExactOutputSingle",
+      outputs: [ { internalType: "uint256", name: "amountIn", type: "uint256" } ],
+      stateMutability: "nonpayable",
+      type: "function"
+    },
+    {
+      inputs: [ { internalType: "bytes", name: "path", type: "bytes" }, { internalType: "uint256", name: "amountOut", type: "uint256" } ],
+      name: "quoteExactOutput",
+      outputs: [ { internalType: "uint256", name: "amountIn", type: "uint256" } ],
+      stateMutability: "nonpayable",
+      type: "function"
     }
   ]
 };
@@ -83,9 +103,12 @@ function encodeV3Path(hops) {
   return ethers.solidityPacked(types, values);
 }
 
-function calcMinOutFromSlippage(amountOut, slippagePct = 0.5) {
+function calcMinOutFromSlippage(amountOut, slippagePct = 0.5, isExactOut = false) {
   const bps = Math.floor(Number(slippagePct) * 100);
   const DENOM = 10_000n;
+  if (isExactOut) {
+    return (BigInt(amountOut) * (DENOM + BigInt(bps))) / DENOM;
+  }
   return (BigInt(amountOut) * (DENOM - BigInt(bps))) / DENOM;
 }
 
@@ -177,7 +200,8 @@ router.post("/best", async (req, res) => {
       executionPrice: "",
       estimatedGas: "0",
       quoteId,
-      expiresAt: expiresAtSec
+      expiresAt: expiresAtSec,
+      mode: "EXACT_IN"
     });
 
     // Persist
@@ -186,9 +210,10 @@ router.post("/best", async (req, res) => {
       tokenIn: tIn.toLowerCase(),
       tokenOut: tOut.toLowerCase(),
       amountIn: String(amountIn),
+      amountOut: response.amountOut,
+      mode: "EXACT_IN",
       route: best.route,
       path: encodedPath,
-      amountOut: response.amountOut,
       amountOutMinimum: response.amountOutMinimum,
       priceImpactPct: response.priceImpactPct,
       estimatedGas: response.estimatedGas,
@@ -199,6 +224,128 @@ router.post("/best", async (req, res) => {
     return res.json(response);
   } catch (err) {
     console.error("/quote/best failed", err);
+    return res.status(500).json({ error: "Internal error", details: err.message });
+  }
+});
+
+/**
+ * EXACT-OUT QUOTE ENDPOINT
+ * Provides price quotes for exact-out token swaps (reverse mode)
+ * User specifies desired output amount, system calculates required input amount
+ */
+router.post("/exact-out", async (req, res) => {
+  try {
+    await ensureProvider();
+    const { tokenIn, tokenOut, amountOut, slippagePct = 0.5, ttlSec = 600 } = req.body || {};
+
+    if (!tokenIn || !tokenOut || !amountOut) {
+      return res.status(400).json({ error: "tokenIn, tokenOut, amountOut are required" });
+    }
+
+    const tIn = ethers.getAddress(tokenIn);
+    const tOut = ethers.getAddress(tokenOut);
+    validateToken(tIn);
+    validateToken(tOut);
+    if (tIn.toLowerCase() === tOut.toLowerCase()) return res.status(400).json({ error: "tokenIn and tokenOut must differ" });
+
+    const decOut = await getTokenDecimals(tOut);
+    const amtOutWei = ethers.parseUnits(String(amountOut), decOut);
+
+    const network = await provider.getNetwork();
+    const chainId = (config.FORCE_CHAIN_ID || network.chainId.toString());
+
+    const candidates = [];
+
+    // Single-hop candidates across all fee tiers
+    for (const fee of VALID_FEES) {
+      candidates.push({ kind: 'single', route: [{ tokenIn: tIn, tokenOut: tOut, fee }], pathTokens: [tIn, fee, tOut] });
+    }
+
+    // Two-hop via anchors
+    const anchors = ANCHORS().map(a => ethers.getAddress(a));
+    for (const mid of anchors) {
+      if (mid.toLowerCase() === tIn.toLowerCase() || mid.toLowerCase() === tOut.toLowerCase()) continue;
+      for (const feeA of VALID_FEES) {
+        for (const feeB of VALID_FEES) {
+          candidates.push({ kind: 'multi', route: [
+            { tokenIn: tIn, tokenOut: mid, fee: feeA },
+            { tokenIn: mid, tokenOut: tOut, fee: feeB }
+          ], pathTokens: [tIn, feeA, mid, feeB, tOut] });
+        }
+      }
+    }
+
+    // Evaluate all candidates using exact-output quoting
+    const evals = [];
+    for (const c of candidates) {
+      try {
+        if (c.kind === 'single') {
+          const inAmount = await quoter.quoteExactOutputSingle.staticCall(c.route[0].tokenIn, c.route[0].tokenOut, c.route[0].fee, amtOutWei, 0);
+          evals.push({ ...c, amountIn: inAmount });
+        } else {
+          const encodedPath = encodeV3Path(c.pathTokens);
+          const inAmount = await quoter.quoteExactOutput.staticCall(encodedPath, amtOutWei);
+          evals.push({ ...c, amountIn: inAmount });
+        }
+      } catch (_) {
+        // ignore failing routes
+      }
+    }
+
+    if (evals.length === 0) {
+      return res.status(400).json({ error: "No executable route/liquidity for this pair" });
+    }
+
+    // Pick best by lowest amountIn (gas tie-breaker omitted; estimate optional later)
+    evals.sort((a, b) => (a.amountIn < b.amountIn ? -1 : a.amountIn > b.amountIn ? 1 : 0));
+    const best = evals[0];
+
+    const decIn = await getTokenDecimals(tIn);
+    const amountInStr = ethers.formatUnits(best.amountIn, decIn);
+    const maxInWei = calcMinOutFromSlippage(best.amountIn, slippagePct, true); // true for exact-out mode
+    const maxInStr = ethers.formatUnits(maxInWei, decIn);
+
+    const encodedPath = encodeV3Path(best.pathTokens);
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiresAtSec = nowSec + Math.min(Math.max(1, Number(ttlSec || 600)), 24 * 60 * 60);
+    const quoteId = `q_${ethers.hexlify(ethers.randomBytes(8)).slice(2)}`;
+
+    const response = serializeBigInts({
+      route: best.route,
+      path: encodedPath,
+      amountIn: amountInStr,
+      amountInMaximum: maxInStr,
+      amountOut: String(amountOut),
+      priceImpactPct: "0", // placeholder; requires mid-price context
+      midPrice: "",
+      executionPrice: "",
+      estimatedGas: "0",
+      quoteId,
+      expiresAt: expiresAtSec,
+      mode: "EXACT_OUT"
+    });
+
+    // Persist
+    await Quote.create({
+      chainId: Number(chainId),
+      tokenIn: tIn.toLowerCase(),
+      tokenOut: tOut.toLowerCase(),
+      amountIn: amountInStr,
+      amountOut: String(amountOut),
+      mode: "EXACT_OUT",
+      route: best.route,
+      path: encodedPath,
+      amountOutMinimum: String(amountOut),
+      priceImpactPct: response.priceImpactPct,
+      estimatedGas: response.estimatedGas,
+      quoteId,
+      expiresAt: new Date(expiresAtSec * 1000)
+    });
+
+    return res.json(response);
+  } catch (err) {
+    console.error("/quote/exact-out failed", err);
     return res.status(500).json({ error: "Internal error", details: err.message });
   }
 });

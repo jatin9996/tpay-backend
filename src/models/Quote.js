@@ -9,13 +9,19 @@ const quoteSchema = new mongoose.Schema({
     tokenIn: { type: String, required: true, lowercase: true, trim: true },
     tokenOut: { type: String, required: true, lowercase: true, trim: true },
     amountIn: { type: String, required: true },
+    amountOut: { type: String, required: true },
+    mode: { 
+        type: String, 
+        required: true, 
+        enum: ['EXACT_IN', 'EXACT_OUT'], 
+        default: 'EXACT_IN' 
+    },
     route: [{
         tokenIn: { type: String, required: true, lowercase: true, trim: true },
         tokenOut: { type: String, required: true, lowercase: true, trim: true },
         fee: { type: Number, required: true }
     }],
     path: { type: String, required: true },
-    amountOut: { type: String, required: true },
     amountOutMinimum: { type: String, required: true },
     priceImpactPct: { type: String, required: false },
     estimatedGas: { type: String, required: false },

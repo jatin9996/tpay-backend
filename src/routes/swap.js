@@ -594,7 +594,8 @@ router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
             deadline: deadline,
             ttlSec: ttlSec,
             timestamp: new Date().toISOString(),
-            status: 'completed'
+            status: 'completed',
+            mode: 'EXACT_IN'
         };
 
         const response = { 
@@ -622,6 +623,476 @@ router.post("/swap", ensureBlockchainInitialized, async (req, res) => {
         }
         if (err.message.includes("EXCESSIVE_INPUT_AMOUNT")) {
             return res.status(400).json({ error: "Input amount too high for available liquidity" });
+        }
+        if (err.message.includes("Token approval failed")) {
+            return res.status(400).json({ error: err.message });
+        }
+        
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * EXACT-OUT SWAP ENDPOINT
+ * Executes exact-out token swaps where user specifies desired output amount
+ * System calculates required input amount and executes the swap
+ */
+router.post("/swap/exact-out", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenIn, tokenOut, amountOut, recipient, slippageTolerance = 0.5, fee = 3000, ttlSec = 600 } = req.body;
+
+        // Use default token addresses from environment variables if not provided
+        const tokenInAddress = tokenIn || config.WETH_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
+
+        // Validate that we have token addresses
+        if (!tokenInAddress || !tokenOutAddress) {
+            return res.status(400).json({ 
+                error: "Token addresses are required. Either provide them in the request body or set WETH_ADDRESS and WMATIC_ADDRESS in your .env file" 
+            });
+        }
+
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
+            return res.status(400).json({ 
+                error: "Cannot swap token for itself" 
+            });
+        }
+
+        // Validate tokens and recipient address using strict checking
+        let validatedTokenIn, validatedTokenOut, validatedRecipient;
+        try {
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
+            validatedRecipient = validateAndFormatAddress(recipient, "Recipient");
+        } catch (validationError) {
+            return res.status(400).json({ 
+                error: `Token validation failed: ${validationError.message}`,
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
+            });
+        }
+
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate output amount
+        if (!amountOut || isNaN(amountOut) || parseFloat(amountOut) <= 0) {
+            return res.status(400).json({ 
+                error: "Valid amountOut is required and must be greater than 0" 
+            });
+        }
+
+        // Validate slippage tolerance (0.1% to 50%)
+        if (slippageTolerance < 0.1 || slippageTolerance > 50) {
+            return res.status(400).json({ 
+                error: "Slippage tolerance must be between 0.1% and 50%" 
+            });
+        }
+
+        // Validate operational limits for custodial swaps
+        const operationalValidation = validateOperationalLimits({
+            slippageTolerance,
+            ttlSec,
+            fee: validatedFee
+        });
+        
+        if (!operationalValidation.isValid) {
+            return res.status(400).json({ 
+                error: "Swap operation exceeds operational limits",
+                details: operationalValidation.errors,
+                limits: operationalValidation.limits
+            });
+        }
+
+        // Calculate deadline with TTL validation
+        let deadline;
+        try {
+            deadline = calculateDeadline(ttlSec);
+        } catch (deadlineError) {
+            return res.status(400).json({ error: deadlineError.message });
+        }
+
+        // Get token decimals and convert amount to Wei
+        const tokenOutDecimals = await getTokenDecimals(validatedTokenOut);
+        const amountOutWei = ethers.parseUnits(amountOut, tokenOutDecimals);
+
+        // Get quote for exact-output to calculate required input amount
+        let requiredAmountIn;
+        try {
+            const quoteAmountIn = await quoter.quoteExactOutputSingle.staticCall(
+                validatedTokenIn,
+                validatedTokenOut,
+                validatedFee,
+                amountOutWei,
+                0
+            );
+            
+            // Reserve sanity check - reject if quote returns 0
+            if (quoteAmountIn <= 0n) {
+                return res.status(400).json({ 
+                    error: "No executable route/liquidity for this pair" 
+                });
+            }
+            
+            requiredAmountIn = quoteAmountIn;
+        } catch (quoteError) {
+            console.error("Quote failed, aborting swap:", quoteError.message);
+            if (quoteError.code === 'BAD_DATA' || /could not decode result data/i.test(quoteError.message)) {
+                return res.status(400).json({ 
+                    error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                    hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+                });
+            }
+            return res.status(400).json({ error: "Failed to get quote for exact-out swap. Please try again or contact support if the issue persists." });
+        }
+        
+        // Calculate maximum input amount based on slippage tolerance
+        let amountInMaximum;
+        try {
+            const bps = Math.round(Number(slippageTolerance) * 100);
+            const DENOM = 10_000n;
+            amountInMaximum = (BigInt(requiredAmountIn) * (DENOM + BigInt(bps))) / DENOM;
+        } catch (slippageError) {
+            return res.status(400).json({ error: "Invalid slippage tolerance" });
+        }
+
+        // Ensure the router has approval to spend the signer's tokens
+        await ensureTokenApproval(
+            validatedTokenIn,
+            wallet.address,
+            uniswapRouter.target,
+            amountInMaximum
+        );
+
+        // Estimate gas for the exact-output swap transaction
+        let gasEstimate;
+        try {
+            gasEstimate = await uniswapRouter.exactOutputSingle.estimateGas({
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                fee: validatedFee,
+                recipient: validatedRecipient,
+                deadline: deadline,
+                amountOut: amountOutWei,
+                amountInMaximum: amountInMaximum,
+                sqrtPriceLimitX96: 0
+            });
+        } catch (gasError) {
+            console.warn("Gas estimation failed, using default:", gasError.message);
+            gasEstimate = 300000n; // Default gas limit
+        }
+
+        // Execute the exact-output swap transaction on the blockchain
+        const tx = await uniswapRouter.exactOutputSingle({
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            fee: validatedFee,
+            recipient: validatedRecipient,
+            deadline: deadline,
+            amountOut: amountOutWei,
+            amountInMaximum: amountInMaximum,
+            sqrtPriceLimitX96: 0
+        }, { 
+            gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% gas buffer for safety
+        });
+
+        // Wait for transaction confirmation
+        await tx.wait();
+
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
+        // Get token in decimals for proper formatting
+        const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
+
+        // Store swap details for history tracking
+        const swapRecord = {
+            txHash: tx.hash,
+            chainId: chainId,
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            amountIn: ethers.formatUnits(requiredAmountIn, tokenInDecimals),
+            amountInWei: requiredAmountIn.toString(),
+            amountOut: amountOut,
+            amountOutMinimum: amountOut,
+            recipient: validatedRecipient,
+            fee: validatedFee,
+            slippageTolerance: slippageTolerance,
+            deadline: deadline,
+            ttlSec: ttlSec,
+            timestamp: new Date().toISOString(),
+            status: 'completed',
+            mode: 'EXACT_OUT'
+        };
+
+        const response = { 
+            success: true, 
+            chainId: chainId,
+            txHash: tx.hash,
+            swapDetails: swapRecord
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
+    } catch (err) {
+        console.error("Exact-out swap error:", err);
+        
+        // Handle specific Uniswap errors with user-friendly messages
+        if (err.message.includes("EXCESSIVE_INPUT_AMOUNT")) {
+            return res.status(400).json({ error: "Slippage tolerance exceeded - try increasing slippage or reducing output amount" });
+        }
+        if (err.message.includes("EXPIRED")) {
+            return res.status(400).json({ error: "Transaction deadline expired - please try again" });
+        }
+        if (err.message.includes("INSUFFICIENT_LIQUIDITY")) {
+            return res.status(400).json({ error: "Insufficient liquidity for this swap" });
+        }
+        if (err.message.includes("Token approval failed")) {
+            return res.status(400).json({ error: err.message });
+        }
+        
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * EXACT-OUT SWAP ENDPOINT
+ * Executes exact-out token swaps where user specifies desired output amount
+ * System calculates required input amount and executes the swap
+ */
+router.post("/swap/exact-out", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenIn, tokenOut, amountOut, recipient, slippageTolerance = 0.5, fee = 3000, ttlSec = 600 } = req.body;
+
+        // Use default token addresses from environment variables if not provided
+        const tokenInAddress = tokenIn || config.WETH_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
+
+        // Validate that we have token addresses
+        if (!tokenInAddress || !tokenOutAddress) {
+            return res.status(400).json({ 
+                error: "Token addresses are required. Either provide them in the request body or set WETH_ADDRESS and WMATIC_ADDRESS in your .env file" 
+            });
+        }
+
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
+            return res.status(400).json({ 
+                error: "Cannot swap token for itself" 
+            });
+        }
+
+        // Validate tokens and recipient address using strict checking
+        let validatedTokenIn, validatedTokenOut, validatedRecipient;
+        try {
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
+            validatedRecipient = validateAndFormatAddress(recipient, "Recipient");
+        } catch (validationError) {
+            return res.status(400).json({ 
+                error: `Token validation failed: ${validationError.message}`,
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
+            });
+        }
+
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate output amount
+        if (!amountOut || isNaN(amountOut) || parseFloat(amountOut) <= 0) {
+            return res.status(400).json({ 
+                error: "Valid amountOut is required and must be greater than 0" 
+            });
+        }
+
+        // Validate slippage tolerance (0.1% to 50%)
+        if (slippageTolerance < 0.1 || slippageTolerance > 50) {
+            return res.status(400).json({ 
+                error: "Slippage tolerance must be between 0.1% and 50%" 
+            });
+        }
+
+        // Validate operational limits for custodial swaps
+        const operationalValidation = validateOperationalLimits({
+            slippageTolerance,
+            ttlSec,
+            fee: validatedFee
+        });
+        
+        if (!operationalValidation.isValid) {
+            return res.status(400).json({ 
+                error: "Swap operation exceeds operational limits",
+                details: operationalValidation.errors,
+                limits: operationalValidation.limits
+            });
+        }
+
+        // Calculate deadline with TTL validation
+        let deadline;
+        try {
+            deadline = calculateDeadline(ttlSec);
+        } catch (deadlineError) {
+            return res.status(400).json({ error: deadlineError.message });
+        }
+
+        // Get token decimals and convert amount to Wei
+        const tokenOutDecimals = await getTokenDecimals(validatedTokenOut);
+        const amountOutWei = ethers.parseUnits(amountOut, tokenOutDecimals);
+
+        // Get quote for exact-output to calculate required input amount
+        let requiredAmountIn;
+        try {
+            const quoteAmountIn = await quoter.quoteExactOutputSingle.staticCall(
+                validatedTokenIn,
+                validatedTokenOut,
+                validatedFee,
+                amountOutWei,
+                0
+            );
+            
+            // Reserve sanity check - reject if quote returns 0
+            if (quoteAmountIn <= 0n) {
+                return res.status(400).json({ 
+                    error: "No executable route/liquidity for this pair" 
+                });
+            }
+            
+            requiredAmountIn = quoteAmountIn;
+        } catch (quoteError) {
+            console.error("Quote failed, aborting swap:", quoteError.message);
+            if (quoteError.code === 'BAD_DATA' || /could not decode result data/i.test(quoteError.message)) {
+                return res.status(400).json({ 
+                    error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                    hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+                });
+            }
+            return res.status(400).json({ error: "Failed to get quote for exact-out swap. Please try again or contact support if the issue persists." });
+        }
+        
+        // Calculate maximum input amount based on slippage tolerance
+        let amountInMaximum;
+        try {
+            const bps = Math.round(Number(slippageTolerance) * 100);
+            const DENOM = 10_000n;
+            amountInMaximum = (BigInt(requiredAmountIn) * (DENOM + BigInt(bps))) / DENOM;
+        } catch (slippageError) {
+            return res.status(400).json({ error: "Invalid slippage tolerance" });
+        }
+
+        // Ensure the router has approval to spend the signer's tokens
+        await ensureTokenApproval(
+            validatedTokenIn,
+            wallet.address,
+            uniswapRouter.target,
+            amountInMaximum
+        );
+
+        // Estimate gas for the exact-output swap transaction
+        let gasEstimate;
+        try {
+            gasEstimate = await uniswapRouter.exactOutputSingle.estimateGas({
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                fee: validatedFee,
+                recipient: validatedRecipient,
+                deadline: deadline,
+                amountOut: amountOutWei,
+                amountInMaximum: amountInMaximum,
+                sqrtPriceLimitX96: 0
+            });
+        } catch (gasError) {
+            console.warn("Gas estimation failed, using default:", gasError.message);
+            gasEstimate = 300000n; // Default gas limit
+        }
+
+        // Execute the exact-output swap transaction on the blockchain
+        const tx = await uniswapRouter.exactOutputSingle({
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            fee: validatedFee,
+            recipient: validatedRecipient,
+            deadline: deadline,
+            amountOut: amountOutWei,
+            amountInMaximum: amountInMaximum,
+            sqrtPriceLimitX96: 0
+        }, { 
+            gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% gas buffer for safety
+        });
+
+        // Wait for transaction confirmation
+        await tx.wait();
+
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
+        // Get token in decimals for proper formatting
+        const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
+
+        // Store swap details for history tracking
+        const swapRecord = {
+            txHash: tx.hash,
+            chainId: chainId,
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            amountIn: ethers.formatUnits(requiredAmountIn, tokenInDecimals),
+            amountInWei: requiredAmountIn.toString(),
+            amountOut: amountOut,
+            amountOutMinimum: amountOut,
+            recipient: validatedRecipient,
+            fee: validatedFee,
+            slippageTolerance: slippageTolerance,
+            deadline: deadline,
+            ttlSec: ttlSec,
+            timestamp: new Date().toISOString(),
+            status: 'completed',
+            mode: 'EXACT_OUT'
+        };
+
+        const response = { 
+            success: true, 
+            chainId: chainId,
+            txHash: tx.hash,
+            swapDetails: swapRecord
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
+    } catch (err) {
+        console.error("Exact-out swap error:", err);
+        
+        // Handle specific Uniswap errors with user-friendly messages
+        if (err.message.includes("EXCESSIVE_INPUT_AMOUNT")) {
+            return res.status(400).json({ error: "Slippage tolerance exceeded - try increasing slippage or reducing output amount" });
+        }
+        if (err.message.includes("EXPIRED")) {
+            return res.status(400).json({ error: "Transaction deadline expired - please try again" });
+        }
+        if (err.message.includes("INSUFFICIENT_LIQUIDITY")) {
+            return res.status(400).json({ error: "Insufficient liquidity for this swap" });
         }
         if (err.message.includes("Token approval failed")) {
             return res.status(400).json({ error: err.message });
@@ -802,7 +1273,8 @@ router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
                 slippageTolerance: slippageTolerance,
                 deadline: deadline,
                 ttlSec: ttlSec,
-                estimatedGas: gasEstimate.toString()
+                estimatedGas: gasEstimate.toString(),
+                mode: 'EXACT_IN'
             },
             instructions: "Sign this transaction in your wallet to execute the swap. The transaction will revert if slippage tolerance is exceeded."
         };
@@ -819,6 +1291,398 @@ router.post("/swap/populate", ensureBlockchainInitialized, async (req, res) => {
         }
         if (err.message.includes("EXCESSIVE_INPUT_AMOUNT")) {
             return res.status(400).json({ error: "Input amount too high for available liquidity" });
+        }
+        
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * NON-CUSTODIAL EXACT-OUT SWAP ENDPOINT
+ * Returns a populated transaction for exact-out swaps for the user to sign in their wallet
+ */
+router.post("/swap/populate/exact-out", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenIn, tokenOut, amountOut, recipient, slippageTolerance = 0.5, fee = 3000, ttlSec = 600 } = req.body;
+
+        // Use default token addresses from environment variables if not provided
+        const tokenInAddress = tokenIn || config.WETH_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
+
+        // Validate that we have token addresses
+        if (!tokenInAddress || !tokenOutAddress) {
+            return res.status(400).json({ 
+                error: "Token addresses are required. Either provide them in the request body or set WETH_ADDRESS and WMATIC_ADDRESS in your .env file" 
+            });
+        }
+
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
+            return res.status(400).json({ 
+                error: "Cannot swap token for itself" 
+            });
+        }
+
+        // Validate tokens and recipient address using strict checking
+        let validatedTokenIn, validatedTokenOut, validatedRecipient;
+        try {
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
+            validatedRecipient = validateAndFormatAddress(recipient, "Recipient");
+        } catch (validationError) {
+            return res.status(400).json({ 
+                error: `Token validation failed: ${validationError.message}`,
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
+            });
+        }
+
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate output amount
+        if (!amountOut || isNaN(amountOut) || parseFloat(amountOut) <= 0) {
+            return res.status(400).json({ 
+                error: "Valid amountOut is required and must be greater than 0" 
+            });
+        }
+
+        // Validate slippage tolerance (0.1% to 50%)
+        if (slippageTolerance < 0.1 || slippageTolerance > 50) {
+            return res.status(400).json({ 
+                error: "Slippage tolerance must be between 0.1% and 50%" 
+            });
+        }
+
+        // Calculate deadline with TTL validation
+        let deadline;
+        try {
+            deadline = calculateDeadline(ttlSec);
+        } catch (deadlineError) {
+            return res.status(400).json({ error: deadlineError.message });
+        }
+
+        // Get token decimals and convert amount to Wei
+        const tokenOutDecimals = await getTokenDecimals(validatedTokenOut);
+        const amountOutWei = ethers.parseUnits(amountOut, tokenOutDecimals);
+
+        // Get quote for exact-output to calculate required input amount
+        let requiredAmountIn;
+        try {
+            const quoteAmountIn = await quoter.quoteExactOutputSingle.staticCall(
+                validatedTokenIn,
+                validatedTokenOut,
+                validatedFee,
+                amountOutWei,
+                0
+            );
+            
+            // Reserve sanity check - reject if quote returns 0
+            if (quoteAmountIn <= 0n) {
+                return res.status(400).json({ 
+                    error: "No executable route/liquidity for this pair" 
+                });
+            }
+            
+            requiredAmountIn = quoteAmountIn;
+        } catch (quoteError) {
+            console.error("Quote failed, aborting swap population:", quoteError.message);
+            if (quoteError.code === 'BAD_DATA' || /could not decode result data/i.test(quoteError.message)) {
+                return res.status(400).json({ 
+                    error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                    hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+                });
+            }
+            return res.status(400).json({ error: "Failed to get quote for exact-out swap. Please try again or contact support if the issue persists." });
+        }
+        
+        // Calculate maximum input amount based on slippage tolerance
+        let amountInMaximum;
+        try {
+            const bps = Math.round(Number(slippageTolerance) * 100);
+            const DENOM = 10_000n;
+            amountInMaximum = (BigInt(requiredAmountIn) * (DENOM + BigInt(bps))) / DENOM;
+        } catch (slippageError) {
+            return res.status(400).json({ error: "Invalid slippage tolerance" });
+        }
+
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
+        // Populate the exact-output transaction without executing it
+        const populatedTx = await uniswapRouter.exactOutputSingle.populateTransaction({
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            fee: validatedFee,
+            recipient: validatedRecipient,
+            deadline: deadline,
+            amountOut: amountOutWei,
+            amountInMaximum: amountInMaximum,
+            sqrtPriceLimitX96: 0
+        });
+
+        // Estimate gas for the exact-output swap transaction
+        let gasEstimate;
+        try {
+            gasEstimate = await uniswapRouter.exactOutputSingle.estimateGas({
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                fee: validatedFee,
+                recipient: validatedRecipient,
+                deadline: deadline,
+                amountOut: amountOutWei,
+                amountInMaximum: amountInMaximum,
+                sqrtPriceLimitX96: 0
+            });
+        } catch (gasError) {
+            console.warn("Gas estimation failed, using default:", gasError.message);
+            gasEstimate = 300000n; // Default gas limit
+        }
+
+        // Get token in decimals for proper formatting
+        const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
+
+        // Return the populated transaction for the user to sign
+        const response = {
+            success: true,
+            chainId: chainId,
+            populatedTransaction: {
+                ...populatedTx,
+                gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% gas buffer for safety
+            },
+            swapDetails: {
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                amountIn: ethers.formatUnits(requiredAmountIn, tokenInDecimals),
+                amountInWei: requiredAmountIn.toString(),
+                amountOut: amountOut,
+                amountOutMinimum: amountOut,
+                recipient: validatedRecipient,
+                fee: validatedFee,
+                slippageTolerance: slippageTolerance,
+                deadline: deadline,
+                ttlSec: ttlSec,
+                estimatedGas: gasEstimate.toString(),
+                mode: 'EXACT_OUT'
+            },
+            instructions: "Sign this transaction in your wallet to execute the exact-out swap. The transaction will revert if slippage tolerance is exceeded."
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
+    } catch (err) {
+        console.error("Exact-out swap population error:", err);
+        
+        // Handle specific Uniswap errors with user-friendly messages
+        if (err.message.includes("INSUFFICIENT_LIQUIDITY")) {
+            return res.status(400).json({ error: "Insufficient liquidity for this swap" });
+        }
+        
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * NON-CUSTODIAL EXACT-OUT SWAP ENDPOINT
+ * Returns a populated transaction for exact-out swaps for the user to sign in their wallet
+ */
+router.post("/swap/populate/exact-out", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenIn, tokenOut, amountOut, recipient, slippageTolerance = 0.5, fee = 3000, ttlSec = 600 } = req.body;
+
+        // Use default token addresses from environment variables if not provided
+        const tokenInAddress = tokenIn || config.WETH_ADDRESS;
+        const tokenOutAddress = tokenOut || config.WMATIC_ADDRESS || config.USDC_ADDRESS;
+
+        // Validate that we have token addresses
+        if (!tokenInAddress || !tokenOutAddress) {
+            return res.status(400).json({ 
+                error: "Token addresses are required. Either provide them in the request body or set WETH_ADDRESS and WMATIC_ADDRESS in your .env file" 
+            });
+        }
+
+        // Normalize addresses upfront
+        const normalizedTokenIn = ethers.getAddress(tokenInAddress);
+        const normalizedTokenOut = ethers.getAddress(tokenOutAddress);
+
+        // Guard against same token swap
+        if (normalizedTokenIn.toLowerCase() === normalizedTokenOut.toLowerCase()) {
+            return res.status(400).json({ 
+                error: "Cannot swap token for itself" 
+            });
+        }
+
+        // Validate tokens and recipient address using strict checking
+        let validatedTokenIn, validatedTokenOut, validatedRecipient;
+        try {
+            validatedTokenIn = validateToken(normalizedTokenIn);
+            validatedTokenOut = validateToken(normalizedTokenOut);
+            validatedRecipient = validateAndFormatAddress(recipient, "Recipient");
+        } catch (validationError) {
+            return res.status(400).json({ 
+                error: `Token validation failed: ${validationError.message}`,
+                tokenIn: normalizedTokenIn,
+                tokenOut: normalizedTokenOut
+            });
+        }
+
+        // Validate fee tier
+        let validatedFee;
+        try {
+            validatedFee = validateFee(fee);
+        } catch (feeError) {
+            return res.status(400).json({ error: feeError.message });
+        }
+
+        // Validate output amount
+        if (!amountOut || isNaN(amountOut) || parseFloat(amountOut) <= 0) {
+            return res.status(400).json({ 
+                error: "Valid amountOut is required and must be greater than 0" 
+            });
+        }
+
+        // Validate slippage tolerance (0.1% to 50%)
+        if (slippageTolerance < 0.1 || slippageTolerance > 50) {
+            return res.status(400).json({ 
+                error: "Slippage tolerance must be between 0.1% and 50%" 
+            });
+        }
+
+        // Calculate deadline with TTL validation
+        let deadline;
+        try {
+            deadline = calculateDeadline(ttlSec);
+        } catch (deadlineError) {
+            return res.status(400).json({ error: deadlineError.message });
+        }
+
+        // Get token decimals and convert amount to Wei
+        const tokenOutDecimals = await getTokenDecimals(validatedTokenOut);
+        const amountOutWei = ethers.parseUnits(amountOut, tokenOutDecimals);
+
+        // Get quote for exact-output to calculate required input amount
+        let requiredAmountIn;
+        try {
+            const quoteAmountIn = await quoter.quoteExactOutputSingle.staticCall(
+                validatedTokenIn,
+                validatedTokenOut,
+                validatedFee,
+                amountOutWei,
+                0
+            );
+            
+            // Reserve sanity check - reject if quote returns 0
+            if (quoteAmountIn <= 0n) {
+                return res.status(400).json({ 
+                    error: "No executable route/liquidity for this pair" 
+                });
+            }
+            
+            requiredAmountIn = quoteAmountIn;
+        } catch (quoteError) {
+            console.error("Quote failed, aborting swap population:", quoteError.message);
+            if (quoteError.code === 'BAD_DATA' || /could not decode result data/i.test(quoteError.message)) {
+                return res.status(400).json({ 
+                    error: "Failed to get quote. Possible causes: unsupported chain configuration, incorrect Quoter address, or no pool/liquidity for the selected fee.",
+                    hint: "Verify RPC_URL chain matches FORCE_CHAIN_ID/DEFAULT_CHAIN_ID, and that Uniswap V3 addresses in chains.js are correct for that chain. Try a different fee tier (500/3000/10000)."
+                });
+            }
+            return res.status(400).json({ error: "Failed to get quote for exact-out swap. Please try again or contact support if the issue persists." });
+        }
+        
+        // Calculate maximum input amount based on slippage tolerance
+        let amountInMaximum;
+        try {
+            const bps = Math.round(Number(slippageTolerance) * 100);
+            const DENOM = 10_000n;
+            amountInMaximum = (BigInt(requiredAmountIn) * (DENOM + BigInt(bps))) / DENOM;
+        } catch (slippageError) {
+            return res.status(400).json({ error: "Invalid slippage tolerance" });
+        }
+
+        // Get current chain info
+        const network = await provider.getNetwork();
+        const chainId = network.chainId.toString();
+
+        // Populate the exact-output transaction without executing it
+        const populatedTx = await uniswapRouter.exactOutputSingle.populateTransaction({
+            tokenIn: validatedTokenIn,
+            tokenOut: validatedTokenOut,
+            fee: validatedFee,
+            recipient: validatedRecipient,
+            deadline: deadline,
+            amountOut: amountOutWei,
+            amountInMaximum: amountInMaximum,
+            sqrtPriceLimitX96: 0
+        });
+
+        // Estimate gas for the exact-output swap transaction
+        let gasEstimate;
+        try {
+            gasEstimate = await uniswapRouter.exactOutputSingle.estimateGas({
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                fee: validatedFee,
+                recipient: validatedRecipient,
+                deadline: deadline,
+                amountOut: amountOutWei,
+                amountInMaximum: amountInMaximum,
+                sqrtPriceLimitX96: 0
+            });
+        } catch (gasError) {
+            console.warn("Gas estimation failed, using default:", gasError.message);
+            gasEstimate = 300000n; // Default gas limit
+        }
+
+        // Get token in decimals for proper formatting
+        const tokenInDecimals = await getTokenDecimals(validatedTokenIn);
+
+        // Return the populated transaction for the user to sign
+        const response = {
+            success: true,
+            chainId: chainId,
+            populatedTransaction: {
+                ...populatedTx,
+                gasLimit: Math.floor(Number(gasEstimate) * 1.2) // 20% gas buffer for safety
+            },
+            swapDetails: {
+                tokenIn: validatedTokenIn,
+                tokenOut: validatedTokenOut,
+                amountIn: ethers.formatUnits(requiredAmountIn, tokenInDecimals),
+                amountInWei: requiredAmountIn.toString(),
+                amountOut: amountOut,
+                amountOutMinimum: amountOut,
+                recipient: validatedRecipient,
+                fee: validatedFee,
+                slippageTolerance: slippageTolerance,
+                deadline: deadline,
+                ttlSec: ttlSec,
+                estimatedGas: gasEstimate.toString(),
+                mode: 'EXACT_OUT'
+            },
+            instructions: "Sign this transaction in your wallet to execute the exact-out swap. The transaction will revert if slippage tolerance is exceeded."
+        };
+        
+        // Serialize any BigInt values before sending response
+        const serializedResponse = serializeBigInts(response);
+        res.json(serializedResponse);
+    } catch (err) {
+        console.error("Exact-out swap population error:", err);
+        
+        // Handle specific Uniswap errors with user-friendly messages
+        if (err.message.includes("INSUFFICIENT_LIQUIDITY")) {
+            return res.status(400).json({ error: "Insufficient liquidity for this swap" });
         }
         
         res.status(500).json({ error: err.message });
