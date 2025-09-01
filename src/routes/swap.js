@@ -141,7 +141,8 @@ async function initializeBlockchain() {
         wallet = new ethers.Wallet(config.PRIVATE_KEY, provider);
         
         // Get Uniswap addresses for the current chain
-        const addresses = getUniswapAddresses(await provider.getNetwork());
+        const network = await provider.getNetwork();
+        const addresses = getUniswapAddresses(network.chainId);
         uniswapRouter = new ethers.Contract(addresses.router, routerABI.abi, wallet);
         quoter = new ethers.Contract(addresses.quoter, quoterABI.abi, wallet);
         
