@@ -53,9 +53,9 @@ const connectDB = async () => {
         await sequelize.authenticate();
         console.log('PostgreSQL connected successfully');
         
-        // Sync all models (create tables if they don't exist)
-        await sequelize.sync({ alter: true });
-        console.log('Database models synchronized');
+        // Note: Removed automatic sync with alter: true to prevent column type casting issues
+        // Database initialization should be handled explicitly through scripts
+        console.log('Database connection established (no automatic schema changes)');
         
         // Handle connection events
         sequelize.addHook('afterConnect', (connection) => {

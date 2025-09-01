@@ -1,179 +1,242 @@
-import { sequelize } from '../config/database.js';
+import { connectDB, sequelize } from '../config/database.js';
+import Chain from '../models/Chain.js';
 import Token from '../models/Token.js';
+import RiskPolicy from '../models/RiskPolicy.js';
+import FeatureFlag from '../models/FeatureFlag.js';
 import Pool from '../models/Pool.js';
 import config from '../config/env.js';
 
-/**
- * Database Seeding Script for PostgreSQL
- * Populates the database with initial data for testing and development
- */
+// Seed data for chains
+const chainsData = [
+    {
+        name: 'Sepolia',
+        chainId: 11155111,
+        rpcUrl: config.RPC_URL || 'https://sepolia.infura.io/v3/your-project-id',
+        routerAddress: '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E', // Uniswap V3 Router
+        quoterAddress: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6', // Uniswap V3 Quoter
+        nativeWrappedAddress: config.WETH_ADDRESS || '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9',
+        isActive: true,
+        blockTime: 12,
+        explorerUrl: 'https://sepolia.etherscan.io'
+    },
+    {
+        name: 'Polygon Mumbai',
+        chainId: 80001,
+        rpcUrl: 'https://polygon-mumbai.infura.io/v3/your-project-id',
+        routerAddress: '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E',
+        quoterAddress: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6',
+        nativeWrappedAddress: '0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889',
+        isActive: false,
+        blockTime: 2,
+        explorerUrl: 'https://mumbai.polygonscan.com'
+    }
+];
 
+// Seed data for tokens
+const tokensData = [
+    {
+        address: config.WETH_ADDRESS || '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9',
+        chainId: 11155111,
+        symbol: 'WETH',
+        name: 'Wrapped Ether',
+        decimals: 18,
+        listed: true,
+        riskFlags: { isStablecoin: false, verified: true, liquidity: 'high' },
+        marketCap: 0,
+        volume24h: 0,
+        priceUsd: 0,
+        isStablecoin: false,
+        verified: true,
+        blacklisted: false
+    },
+    {
+        address: config.USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+        chainId: 11155111,
+        symbol: 'USDC',
+        name: 'USD Coin',
+        decimals: 6,
+        listed: true,
+        riskFlags: { isStablecoin: true, verified: true, liquidity: 'high' },
+        marketCap: 0,
+        volume24h: 0,
+        priceUsd: 1.00,
+        isStablecoin: true,
+        verified: true,
+        blacklisted: false
+    },
+    {
+        address: config.USDT_ADDRESS || '0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0',
+        chainId: 11155111,
+        symbol: 'USDT',
+        name: 'Tether USD',
+        decimals: 6,
+        listed: true,
+        riskFlags: { isStablecoin: true, verified: true, liquidity: 'high' },
+        marketCap: 0,
+        volume24h: 0,
+        priceUsd: 1.00,
+        isStablecoin: true,
+        verified: true,
+        blacklisted: false
+    }
+];
+
+// Seed data for risk policies
+const riskPoliciesData = [
+    {
+        chainId: 11155111,
+        maxSlippageBps: 5000, // 50%
+        maxTtlSec: 86400, // 24 hours
+        allowedFees: [500, 3000, 10000],
+        paused: false,
+        maxAmountIn: '1000000000000000000000', // 1000 ETH
+        maxAmountOut: '1000000000000000000000', // 1000 ETH
+        dailySwapLimit: '10000000000000000000000', // 10000 ETH
+        dailyVolumeLimit: '100000000000000000000000', // 100000 ETH
+        whitelistedTokens: [],
+        blacklistedTokens: [],
+        whitelistedUsers: [],
+        blacklistedUsers: [],
+        description: 'Default risk policy for Sepolia testnet'
+    }
+];
+
+// Seed data for feature flags
+const featureFlagsData = [
+    {
+        key: 'SWAP_ENABLED',
+        value: { enabled: true, reason: 'Swaps are operational' },
+        description: 'Global switch for swap functionality',
+        isActive: true,
+        environment: 'production',
+        updatedBy: 'system'
+    },
+    {
+        key: 'CUSTODIAL_MODE',
+        value: { enabled: false, reason: 'Non-custodial mode only for security' },
+        description: 'Enable/disable custodial swap execution',
+        isActive: true,
+        environment: 'production',
+        updatedBy: 'system'
+    },
+    {
+        key: 'EXACT_OUT_ENABLED',
+        value: { enabled: true, reason: 'Exact-out swaps are operational' },
+        description: 'Enable/disable exact-out swap mode',
+        isActive: true,
+        environment: 'production',
+        updatedBy: 'system'
+    },
+    {
+        key: 'RATE_LIMITING',
+        value: { enabled: true, maxRequests: 100, windowMs: 60000 },
+        description: 'Rate limiting configuration',
+        isActive: true,
+        environment: 'production',
+        updatedBy: 'system'
+    }
+];
+
+// Seed data for pools (example pools)
+const poolsData = [
+    {
+        chainId: 11155111,
+        token0: config.WETH_ADDRESS || '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9',
+        token1: config.USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+        feeTier: 3000,
+        poolAddress: '0x0000000000000000000000000000000000000000', // Placeholder
+        tickSpacing: 60,
+        sqrtPriceX96: '0',
+        liquidity: '0',
+        reserve0: '0',
+        reserve1: '0',
+        price0: 0,
+        price1: 0,
+        volume24h: 0,
+        tvl: 0,
+        fees24h: 0,
+        isActive: true,
+        metadata: { poolType: 'uniswap_v3', version: '1.0.0' }
+    }
+];
+
+// Seed the database
 const seedDatabase = async () => {
     try {
-        console.log('🌱 Starting database seeding...');
+        console.log('Starting database seeding...');
         
-        // Test database connection
-        await sequelize.authenticate();
-        console.log('✅ Database connection established successfully');
+        // Connect to database
+        await connectDB();
         
-        // Sync models to ensure tables exist
-        await sequelize.sync({ alter: true });
-        console.log('✅ Database tables synchronized');
-        
-        // Seed tokens
-        console.log('🔄 Seeding tokens...');
-        await seedTokens();
-        
-        // Seed pools
-        console.log('🔄 Seeding pools...');
-        await seedPools();
-        
-        console.log('🎉 Database seeding completed successfully!');
-        
-    } catch (error) {
-        console.error('❌ Database seeding failed:', error.message);
-        process.exit(1);
-    } finally {
-        await sequelize.close();
-        console.log('🔌 Database connection closed');
-    }
-};
-
-const seedTokens = async () => {
-    try {
-        // Check if tokens already exist
-        const existingTokens = await Token.count({ where: {} });
-        if (existingTokens > 0) {
-            console.log('ℹ️ Tokens already exist, skipping token seeding');
-            return;
-        }
-        
-        const tokens = [
-            {
-                address: config.WETH_ADDRESS,
-                symbol: 'WETH',
-                name: 'Wrapped Ether',
-                decimals: 18,
-                totalSupply: '1000000000000000000000000', // 1M WETH
-                chainId: parseInt(config.DEFAULT_CHAIN_ID),
-                isEssential: true,
-                isActive: true
-            },
-            {
-                address: config.USDC_ADDRESS,
-                symbol: 'USDC',
-                name: 'USD Coin',
-                decimals: 6,
-                totalSupply: '1000000000000', // 1M USDC
-                chainId: parseInt(config.DEFAULT_CHAIN_ID),
-                isEssential: true,
-                isActive: true
-            },
-            {
-                address: config.USDT_ADDRESS,
-                symbol: 'USDT',
-                name: 'Tether USD',
-                decimals: 6,
-                totalSupply: '1000000000000', // 1M USDT
-                chainId: parseInt(config.DEFAULT_CHAIN_ID),
-                isEssential: true,
-                isActive: true
-            }
-        ];
-        
-        // Add WMATIC if configured
-        if (config.WMATIC_ADDRESS) {
-            tokens.push({
-                address: config.WMATIC_ADDRESS,
-                symbol: 'WMATIC',
-                name: 'Wrapped MATIC',
-                decimals: 18,
-                totalSupply: '1000000000000000000000000', // 1M WMATIC
-                chainId: parseInt(config.DEFAULT_CHAIN_ID),
-                isEssential: false,
-                isActive: true
+        // Seed chains
+        console.log('Seeding chains...');
+        for (const chainData of chainsData) {
+            await Chain.findOrCreate({
+                where: { chainId: chainData.chainId },
+                defaults: chainData
             });
         }
+        console.log('✅ Chains seeded');
         
-        await Token.bulkCreate(tokens);
-        console.log(`✅ Created ${tokens.length} tokens`);
+        // Seed tokens
+        console.log('Seeding tokens...');
+        for (const tokenData of tokensData) {
+            await Token.findOrCreate({
+                where: { address: tokenData.address },
+                defaults: tokenData
+            });
+        }
+        console.log('✅ Tokens seeded');
         
+        // Seed risk policies
+        console.log('Seeding risk policies...');
+        for (const policyData of riskPoliciesData) {
+            await RiskPolicy.findOrCreate({
+                where: { chainId: policyData.chainId },
+                defaults: policyData
+            });
+        }
+        console.log('✅ Risk policies seeded');
+        
+        // Seed feature flags
+        console.log('Seeding feature flags...');
+        for (const flagData of featureFlagsData) {
+            await FeatureFlag.findOrCreate({
+                where: { key: flagData.key },
+                defaults: flagData
+            });
+        }
+        console.log('✅ Feature flags seeded');
+        
+        // Seed pools
+        console.log('Seeding pools...');
+        for (const poolData of poolsData) {
+            await Pool.findOrCreate({
+                where: { 
+                    chainId: poolData.chainId,
+                    token0: poolData.token0,
+                    token1: poolData.token1,
+                    feeTier: poolData.feeTier
+                },
+                defaults: poolData
+            });
+        }
+        console.log('✅ Pools seeded');
+        
+        console.log('🎉 Database seeding completed successfully!');
+        console.log('Seeded data:');
+        console.log(`- ${chainsData.length} chains`);
+        console.log(`- ${tokensData.length} tokens`);
+        console.log(`- ${riskPoliciesData.length} risk policies`);
+        console.log(`- ${featureFlagsData.length} feature flags`);
+        console.log(`- ${poolsData.length} pools`);
+        
+        process.exit(0);
     } catch (error) {
-        console.error('❌ Error seeding tokens:', error.message);
-        throw error;
+        console.error('Database seeding failed:', error);
+        process.exit(1);
     }
 };
 
-const seedPools = async () => {
-    try {
-        // Check if pools already exist
-        const existingPools = await Pool.count({ where: {} });
-        if (existingPools > 0) {
-            console.log('ℹ️ Pools already exist, skipping pool seeding');
-            return;
-        }
-        
-        // Get seeded tokens
-        const tokens = await Token.findAll({
-            where: { isActive: true },
-            attributes: ['address', 'symbol', 'name', 'decimals']
-        });
-        
-        if (tokens.length < 2) {
-            console.log('⚠️ Need at least 2 tokens to create pools');
-            return;
-        }
-        
-        const pools = [];
-        
-        // Create pools between essential tokens
-        for (let i = 0; i < tokens.length; i++) {
-            for (let j = i + 1; j < tokens.length; j++) {
-                const token0 = tokens[i];
-                const token1 = tokens[j];
-                
-                // Generate a mock pair address (in real scenario, this would come from Uniswap)
-                const pairAddress = `0x${Math.random().toString(16).substr(2, 40)}`;
-                
-                pools.push({
-                    pairAddress: pairAddress.toLowerCase(),
-                    token0Address: token0.address,
-                    token0Symbol: token0.symbol,
-                    token0Name: token0.name,
-                    token0Decimals: token0.decimals,
-                    token1Address: token1.address,
-                    token1Symbol: token1.symbol,
-                    token1Name: token1.name,
-                    token1Decimals: token1.decimals,
-                    chainId: parseInt(config.DEFAULT_CHAIN_ID),
-                    isActive: true,
-                    liquidity: '1000000000000000000000', // 1000 tokens
-                    volume24h: '500000000000000000000', // 500 tokens
-                    fee: 3000 // 0.3%
-                });
-            }
-        }
-        
-        await Pool.bulkCreate(pools);
-        console.log(`✅ Created ${pools.length} pools`);
-        
-    } catch (error) {
-        console.error('❌ Error seeding pools:', error.message);
-        throw error;
-    }
-};
-
-// Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-    seedDatabase()
-        .then(() => {
-            console.log('Database seeding completed');
-            process.exit(0);
-        })
-        .catch((error) => {
-            console.error('Database seeding failed:', error);
-            process.exit(1);
-        });
-}
-
-export default seedDatabase;
+// Run seeding
+seedDatabase();

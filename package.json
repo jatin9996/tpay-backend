@@ -8,6 +8,7 @@
     "db:init": "node src/scripts/initDatabase.js",
     "db:seed": "node src/scripts/seedDatabase.js",
     "db:reset": "npm run db:init && npm run db:seed",
+    "db:fix-columns": "node src/scripts/fixVolume24hColumn.js",
     "seed": "node src/scripts/seedDatabase.js",
     "test:search": "node test-search.js",
     "test": "mocha --import @babel/register --import test/setup.js 'test/**/*.test.js'",
