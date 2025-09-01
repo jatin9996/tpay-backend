@@ -5,6 +5,7 @@ import Pool from '../models/Pool.js';
  * Search Service
  * Handles combined search functionality for tokens and pools
  * Implements relevance scoring and result grouping
+ * Updated to use Sequelize with PostgreSQL
  */
 
 class SearchService {
@@ -202,14 +203,16 @@ class SearchService {
     static async getEmptyStateDefaults() {
         try {
             const [defaultTokens, defaultPools] = await Promise.all([
-                Token.find({ isEssential: true, isActive: true })
-                    .limit(5)
-                    .sort({ symbol: 1 })
-                    .lean(),
-                Pool.find({ isActive: true })
-                    .limit(5)
-                    .sort({ liquidity: -1 })
-                    .lean()
+                Token.findAll({ 
+                    where: { isEssential: true, isActive: true },
+                    limit: 5,
+                    order: [['symbol', 'ASC']]
+                }),
+                Pool.findAll({ 
+                    where: { isActive: true },
+                    limit: 5,
+                    order: [['liquidity', 'DESC']]
+                })
             ]);
 
             return {

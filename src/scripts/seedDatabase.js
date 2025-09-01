@@ -1,201 +1,179 @@
-import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { sequelize } from '../config/database.js';
 import Token from '../models/Token.js';
 import Pool from '../models/Pool.js';
 import config from '../config/env.js';
 
-// Load environment variables
-dotenv.config();
-
 /**
- * Database Seeder Script
- * Populates the database with initial tokens and pools for testing
+ * Database Seeding Script for PostgreSQL
+ * Populates the database with initial data for testing and development
  */
-
-const seedTokens = [
-    {
-        address: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
-        symbol: "WETH",
-        name: "Wrapped Ether",
-        decimals: 18,
-        totalSupply: "1000000000000000000000000",
-        chainId: 11155111,
-        isEssential: true,
-        isActive: true
-    },
-    {
-        address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-        symbol: "USDC",
-        name: "USD Coin",
-        decimals: 6,
-        totalSupply: "1000000000000",
-        chainId: 11155111,
-        isEssential: true,
-        isActive: true
-    },
-    {
-        address: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
-        symbol: "USDT",
-        name: "Tether USD",
-        decimals: 6,
-        totalSupply: "1000000000000",
-        chainId: 11155111,
-        isEssential: true,
-        isActive: true
-    },
-    {
-        address: "0x1234567890123456789012345678901234567890",
-        symbol: "DAI",
-        name: "Dai Stablecoin",
-        decimals: 18,
-        totalSupply: "1000000000000000000000000",
-        chainId: 11155111,
-        isEssential: false,
-        isActive: true
-    },
-    {
-        address: "0x2345678901234567890123456789012345678901",
-        symbol: "LINK",
-        name: "Chainlink",
-        decimals: 18,
-        totalSupply: "1000000000000000000000000",
-        chainId: 11155111,
-        isEssential: false,
-        isActive: true
-    }
-];
-
-const seedPools = [
-    {
-        pairAddress: "0x1111111111111111111111111111111111111111",
-        token0: {
-            address: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
-            symbol: "WETH",
-            name: "Wrapped Ether",
-            decimals: 18
-        },
-        token1: {
-            address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-            symbol: "USDC",
-            name: "USD Coin",
-            decimals: 6
-        },
-        chainId: 11155111,
-        isActive: true,
-        liquidity: "1000000000000000000000",
-        volume24h: "500000000000000000000",
-        fee: 3000
-    },
-    {
-        pairAddress: "0x2222222222222222222222222222222222222222",
-        token0: {
-            address: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
-            symbol: "WETH",
-            name: "Wrapped Ether",
-            decimals: 18
-        },
-        token1: {
-            address: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
-            symbol: "USDT",
-            name: "Tether USD",
-            decimals: 6
-        },
-        chainId: 11155111,
-        isActive: true,
-        liquidity: "800000000000000000000",
-        volume24h: "300000000000000000000",
-        fee: 3000
-    },
-    {
-        pairAddress: "0x3333333333333333333333333333333333333333",
-        token0: {
-            address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-            symbol: "USDC",
-            name: "USD Coin",
-            decimals: 6
-        },
-        token1: {
-            address: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
-            symbol: "USDT",
-            name: "Tether USD",
-            decimals: 6
-        },
-        chainId: 11155111,
-        isActive: true,
-        liquidity: "1200000000000000000000",
-        volume24h: "700000000000000000000",
-        fee: 1000
-    },
-    {
-        pairAddress: "0x4444444444444444444444444444444444444444",
-        token0: {
-            address: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
-            symbol: "WETH",
-            name: "Wrapped Ether",
-            decimals: 18
-        },
-        token1: {
-            address: "0x1234567890123456789012345678901234567890",
-            symbol: "DAI",
-            name: "Dai Stablecoin",
-            decimals: 18
-        },
-        chainId: 11155111,
-        isActive: true,
-        liquidity: "600000000000000000000",
-        volume24h: "200000000000000000000",
-        fee: 3000
-    }
-];
 
 const seedDatabase = async () => {
     try {
-        // Connect to MongoDB
-        await mongoose.connect(config.MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
+        console.log('🌱 Starting database seeding...');
         
-        console.log('Connected to MongoDB');
+        // Test database connection
+        await sequelize.authenticate();
+        console.log('✅ Database connection established successfully');
         
-        // Clear existing data
-        await Token.deleteMany({});
-        await Pool.deleteMany({});
-        console.log('Cleared existing data');
+        // Sync models to ensure tables exist
+        await sequelize.sync({ alter: true });
+        console.log('✅ Database tables synchronized');
         
         // Seed tokens
-        const createdTokens = await Token.insertMany(seedTokens);
-        console.log(`Created ${createdTokens.length} tokens`);
+        console.log('🔄 Seeding tokens...');
+        await seedTokens();
         
         // Seed pools
-        const createdPools = await Pool.insertMany(seedPools);
-        console.log(`Created ${createdPools.length} pools`);
+        console.log('🔄 Seeding pools...');
+        await seedPools();
         
-        // Create indexes
-        await Token.createIndexes();
-        await Pool.createIndexes();
-        console.log('Database indexes created');
-        
-        console.log('Database seeding completed successfully!');
-        
-        // Display summary
-        console.log('\n=== SEEDING SUMMARY ===');
-        console.log(`Tokens: ${createdTokens.length}`);
-        console.log(`Pools: ${createdPools.length}`);
-        console.log('=======================\n');
+        console.log('🎉 Database seeding completed successfully!');
         
     } catch (error) {
-        console.error('Database seeding failed:', error);
+        console.error('❌ Database seeding failed:', error.message);
         process.exit(1);
     } finally {
-        await mongoose.connection.close();
-        console.log('MongoDB connection closed');
+        await sequelize.close();
+        console.log('🔌 Database connection closed');
     }
 };
 
-// Run seeder if called directly
+const seedTokens = async () => {
+    try {
+        // Check if tokens already exist
+        const existingTokens = await Token.count({ where: {} });
+        if (existingTokens > 0) {
+            console.log('ℹ️ Tokens already exist, skipping token seeding');
+            return;
+        }
+        
+        const tokens = [
+            {
+                address: config.WETH_ADDRESS,
+                symbol: 'WETH',
+                name: 'Wrapped Ether',
+                decimals: 18,
+                totalSupply: '1000000000000000000000000', // 1M WETH
+                chainId: parseInt(config.DEFAULT_CHAIN_ID),
+                isEssential: true,
+                isActive: true
+            },
+            {
+                address: config.USDC_ADDRESS,
+                symbol: 'USDC',
+                name: 'USD Coin',
+                decimals: 6,
+                totalSupply: '1000000000000', // 1M USDC
+                chainId: parseInt(config.DEFAULT_CHAIN_ID),
+                isEssential: true,
+                isActive: true
+            },
+            {
+                address: config.USDT_ADDRESS,
+                symbol: 'USDT',
+                name: 'Tether USD',
+                decimals: 6,
+                totalSupply: '1000000000000', // 1M USDT
+                chainId: parseInt(config.DEFAULT_CHAIN_ID),
+                isEssential: true,
+                isActive: true
+            }
+        ];
+        
+        // Add WMATIC if configured
+        if (config.WMATIC_ADDRESS) {
+            tokens.push({
+                address: config.WMATIC_ADDRESS,
+                symbol: 'WMATIC',
+                name: 'Wrapped MATIC',
+                decimals: 18,
+                totalSupply: '1000000000000000000000000', // 1M WMATIC
+                chainId: parseInt(config.DEFAULT_CHAIN_ID),
+                isEssential: false,
+                isActive: true
+            });
+        }
+        
+        await Token.bulkCreate(tokens);
+        console.log(`✅ Created ${tokens.length} tokens`);
+        
+    } catch (error) {
+        console.error('❌ Error seeding tokens:', error.message);
+        throw error;
+    }
+};
+
+const seedPools = async () => {
+    try {
+        // Check if pools already exist
+        const existingPools = await Pool.count({ where: {} });
+        if (existingPools > 0) {
+            console.log('ℹ️ Pools already exist, skipping pool seeding');
+            return;
+        }
+        
+        // Get seeded tokens
+        const tokens = await Token.findAll({
+            where: { isActive: true },
+            attributes: ['address', 'symbol', 'name', 'decimals']
+        });
+        
+        if (tokens.length < 2) {
+            console.log('⚠️ Need at least 2 tokens to create pools');
+            return;
+        }
+        
+        const pools = [];
+        
+        // Create pools between essential tokens
+        for (let i = 0; i < tokens.length; i++) {
+            for (let j = i + 1; j < tokens.length; j++) {
+                const token0 = tokens[i];
+                const token1 = tokens[j];
+                
+                // Generate a mock pair address (in real scenario, this would come from Uniswap)
+                const pairAddress = `0x${Math.random().toString(16).substr(2, 40)}`;
+                
+                pools.push({
+                    pairAddress: pairAddress.toLowerCase(),
+                    token0Address: token0.address,
+                    token0Symbol: token0.symbol,
+                    token0Name: token0.name,
+                    token0Decimals: token0.decimals,
+                    token1Address: token1.address,
+                    token1Symbol: token1.symbol,
+                    token1Name: token1.name,
+                    token1Decimals: token1.decimals,
+                    chainId: parseInt(config.DEFAULT_CHAIN_ID),
+                    isActive: true,
+                    liquidity: '1000000000000000000000', // 1000 tokens
+                    volume24h: '500000000000000000000', // 500 tokens
+                    fee: 3000 // 0.3%
+                });
+            }
+        }
+        
+        await Pool.bulkCreate(pools);
+        console.log(`✅ Created ${pools.length} pools`);
+        
+    } catch (error) {
+        console.error('❌ Error seeding pools:', error.message);
+        throw error;
+    }
+};
+
+// Run if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-    seedDatabase();
+    seedDatabase()
+        .then(() => {
+            console.log('Database seeding completed');
+            process.exit(0);
+        })
+        .catch((error) => {
+            console.error('Database seeding failed:', error);
+            process.exit(1);
+        });
 }
 
 export default seedDatabase;

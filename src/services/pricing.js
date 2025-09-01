@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import config from "../config/env.js";
 import Token from "../models/Token.js";
 
@@ -10,6 +9,7 @@ import Token from "../models/Token.js";
  *   - If token is WETH, try to get WETH->USDC rate from env seed (fallback to 0)
  *   - Otherwise, return 0 indicating unknown
  * NOTE: This placeholder can be enhanced later to read pair_snapshots.
+ * Updated to use Sequelize with PostgreSQL
  */
 
 const STABLE_ADDRESSES = [
@@ -30,7 +30,13 @@ export async function getTokenPriceUSD(tokenAddress) {
 }
 
 export async function formatTokenMeta(address) {
-    const token = await Token.findOne({ address: address.toLowerCase(), isActive: true }).lean();
+    const token = await Token.findOne({ 
+        where: { 
+            address: address.toLowerCase(), 
+            isActive: true 
+        } 
+    });
+    
     if (token) {
         return {
             address: token.address,

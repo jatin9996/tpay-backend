@@ -13,10 +13,10 @@ router.get("/trending", async (req, res) => {
             return res.status(400).json({ success: false, error: "Only 24h window is supported currently" });
         }
 
-        const docs = await TokenStats24h.find({})
-            .sort({ volume24hUSD: -1 })
-            .limit(parsedLimit)
-            .lean();
+        const docs = await TokenStats24h.findAll({
+            order: [['volume24hUSD', 'DESC']],
+            limit: parsedLimit
+        });
 
         return res.json({ success: true, window, tokens: docs, count: docs.length });
     } catch (e) {

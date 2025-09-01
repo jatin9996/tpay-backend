@@ -11,8 +11,13 @@ const requiredEnvVars = {
 };
 
 const optionalEnvVars = {
-    // MongoDB Configuration
-    MONGODB_URI: process.env.MONGODB_URI || 'mongodb://localhost:27017/tpay',
+    // PostgreSQL Configuration
+    POSTGRES_HOST: process.env.POSTGRES_HOST || 'localhost',
+    POSTGRES_PORT: process.env.POSTGRES_PORT || 5432,
+    POSTGRES_DB: process.env.POSTGRES_DB || 'tpay',
+    POSTGRES_USER: process.env.POSTGRES_USER || 'postgres',
+    POSTGRES_PASSWORD: process.env.POSTGRES_PASSWORD || '',
+    POSTGRES_URI: process.env.POSTGRES_URI, // Alternative: full connection string
     
     // Essential test tokens (Sepolia) - Only 2-3 tokens for testing
     WETH_ADDRESS: process.env.WETH_ADDRESS || "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", 

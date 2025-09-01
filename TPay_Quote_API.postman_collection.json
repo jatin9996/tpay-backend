@@ -1,0 +1,337 @@
+{
+  "info": {
+    "name": "TPay Quote API",
+    "description": "Comprehensive Postman collection for testing TPay's production-ready quote system with database integration, caching, and rate limiting",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Quote Generation",
+      "item": [
+        {
+          "name": "POST /quote - Basic Quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\",\n  \"amountIn\": \"1.0\",\n  \"slippagePct\": 0.5,\n  \"ttlSec\": 600,\n  \"userAddress\": \"0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote",
+              "host": ["{{base_url}}"],
+              "path": ["quote"]
+            },
+            "description": "Generate a basic EXACT_IN quote for WETH to USDC swap"
+          }
+        },
+        {
+          "name": "POST /quote/best - Legacy Endpoint",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\",\n  \"amountIn\": \"0.5\",\n  \"slippagePct\": 1.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote/best",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "best"]
+            },
+            "description": "Legacy endpoint for exact-in quotes (maintains backward compatibility)"
+          }
+        },
+        {
+          "name": "POST /quote/exact-out - Exact Output",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\",\n  \"amountOut\": \"1000.0\",\n  \"slippagePct\": 1.0,\n  \"ttlSec\": 300\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote/exact-out",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "exact-out"]
+            },
+            "description": "Generate EXACT_OUT quote - specify desired output amount"
+          }
+        },
+        {
+          "name": "POST /quote - Invalid Same Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"amountIn\": \"1.0\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote",
+              "host": ["{{base_url}}"],
+              "path": ["quote"]
+            },
+            "description": "Test error handling for same token input/output (should return 400)"
+          }
+        },
+        {
+          "name": "POST /quote - Missing Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote",
+              "host": ["{{base_url}}"],
+              "path": ["quote"]
+            },
+            "description": "Test error handling for missing required fields (should return 500)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quote Retrieval",
+      "item": [
+        {
+          "name": "GET /quote/:quoteId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/quote/{{quote_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "{{quote_id}}"]
+            },
+            "description": "Retrieve a specific quote by ID (use quote_id from previous requests)"
+          }
+        },
+        {
+          "name": "GET /quote/nonexistent - 404 Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/quote/nonexistent_quote_123",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "nonexistent_quote_123"]
+            },
+            "description": "Test 404 response for non-existent quote"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Statistics & Monitoring",
+      "item": [
+        {
+          "name": "GET /quote/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/quote/stats",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "stats"]
+            },
+            "description": "Get overall quote statistics"
+          }
+        },
+        {
+          "name": "GET /quote/stats with Time Range",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/quote/stats?timeRange=1h",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "stats"],
+              "query": [
+                {
+                  "key": "timeRange",
+                  "value": "1h"
+                }
+              ]
+            },
+            "description": "Get quote statistics for specific time range (1h, 24h, 7d, 30d)"
+          }
+        },
+        {
+          "name": "GET /quote/requests/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/quote/requests/stats",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "requests", "stats"]
+            },
+            "description": "Get quote request statistics for monitoring and debugging"
+          }
+        },
+        {
+          "name": "GET /quote/cache/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/quote/cache/stats",
+              "host": ["{{base_url}}"],
+              "path": ["quote", "cache", "stats"]
+            },
+            "description": "Get cache performance statistics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rate Limiting Tests",
+      "item": [
+        {
+          "name": "Rate Limit Test - Single Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\",\n  \"amountIn\": \"0.1\",\n  \"slippagePct\": 0.5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote",
+              "host": ["{{base_url}}"],
+              "path": ["quote"]
+            },
+            "description": "Single request to test rate limiting headers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Caching Tests",
+      "item": [
+        {
+          "name": "Cache Test - First Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\",\n  \"amountIn\": \"0.25\",\n  \"slippagePct\": 0.5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote",
+              "host": ["{{base_url}}"],
+              "path": ["quote"]
+            },
+            "description": "First request with specific parameters (should not be cached)"
+          }
+        },
+        {
+          "name": "Cache Test - Second Request (Same Params)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9\",\n  \"tokenOut\": \"0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238\",\n  \"amountIn\": \"0.25\",\n  \"slippagePct\": 0.5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/quote",
+              "host": ["{{base_url}}"],
+              "path": ["quote"]
+            },
+            "description": "Second request with same parameters (should be cached - check fromCache field)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Database Integration Tests",
+      "item": [
+        {
+          "name": "Database Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dex/health",
+              "host": ["{{base_url}}"],
+              "path": ["dex", "health"]
+            },
+            "description": "Check database connectivity and health"
+          }
+        },
+        {
+          "name": "Token Validation Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/tokens",
+              "host": ["{{base_url}}"],
+              "path": ["tokens"]
+            },
+            "description": "Verify token database integration"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "quote_id",
+      "value": "q_example123",
+      "type": "string"
+    }
+  ]
+}
