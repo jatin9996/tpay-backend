@@ -1,0 +1,742 @@
+{
+	"info": {
+		"_postman_id": "tpay-comprehensive-api",
+		"name": "TPay Comprehensive API",
+		"description": "Complete API collection for TPay Digital Exchange with database integration, custodial and non-custodial swaps, exact-out functionality, and comprehensive analytics",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "12345678"
+	},
+	"item": [
+		{
+			"name": "Database Management",
+			"item": [
+				{
+					"name": "Initialize Database",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/db/init",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"db",
+								"init"
+							]
+						},
+						"description": "Initialize database tables and models"
+					}
+				},
+				{
+					"name": "Seed Database",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/db/seed",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"db",
+								"seed"
+							]
+						},
+						"description": "Seed database with initial data (chains, tokens, risk policies, feature flags)"
+					}
+				}
+			]
+		},
+		{
+			"name": "Custodial Swaps",
+			"item": [
+				{
+					"name": "Execute Exact-In Swap (Custodial)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"0.1\",\n  \"recipient\": \"{{user_address}}\",\n  \"fee\": 3000,\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 3600,\n  \"mode\": \"EXACT_IN\",\n  \"clientRequestId\": \"{{$guid}}\",\n  \"userAddress\": \"{{user_address}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/swap",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap"
+							]
+						},
+						"description": "Execute a custodial swap with exact input amount. Backend wallet executes the transaction."
+					}
+				},
+				{
+					"name": "Execute Exact-Out Swap (Custodial)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountOut\": \"100\",\n  \"amountInMaximum\": \"0.1\",\n  \"recipient\": \"{{user_address}}\",\n  \"fee\": 3000,\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 3600,\n  \"clientRequestId\": \"{{$guid}}\",\n  \"userAddress\": \"{{user_address}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/swap/exact-out",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap",
+								"exact-out"
+							]
+						},
+						"description": "Execute a custodial swap with exact output amount. Backend wallet executes the transaction."
+					}
+				}
+			]
+		},
+		{
+			"name": "Non-Custodial Swaps",
+			"item": [
+				{
+					"name": "Populate Exact-In Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"0.1\",\n  \"recipient\": \"{{user_address}}\",\n  \"fee\": 3000,\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 3600,\n  \"mode\": \"EXACT_IN\",\n  \"clientRequestId\": \"{{$guid}}\",\n  \"userAddress\": \"{{user_address}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/swap/populate",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap",
+								"populate"
+							]
+						},
+						"description": "Get populated transaction for exact-input swap. User signs and executes the transaction."
+					}
+				},
+				{
+					"name": "Populate Exact-Out Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountOut\": \"100\",\n  \"amountInMaximum\": \"0.1\",\n  \"recipient\": \"{{user_address}}\",\n  \"fee\": 3000,\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 3600,\n  \"clientRequestId\": \"{{$guid}}\",\n  \"userAddress\": \"{{user_address}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/swap/populate/exact-out",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap",
+								"populate",
+								"exact-out"
+							]
+						},
+						"description": "Get populated transaction for exact-output swap. User signs and executes the transaction."
+					}
+				}
+			]
+		},
+		{
+			"name": "Swap Queries",
+			"item": [
+				{
+					"name": "Get Swap Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/swap/{{swap_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap",
+								"{{swap_id}}"
+							]
+						},
+						"description": "Get detailed information about a specific swap"
+					}
+				},
+				{
+					"name": "Get User Swaps",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/swap/user/{{user_address}}?limit=50&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap",
+								"user",
+								"{{user_address}}"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "50"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "Get all swaps for a specific user address with pagination"
+					}
+				},
+				{
+					"name": "Get Swap Statistics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/swap/stats?chainId=11155111&timeRange=24h",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"swap",
+								"stats"
+							],
+							"query": [
+								{
+									"key": "chainId",
+									"value": "11155111"
+								},
+								{
+									"key": "timeRange",
+									"value": "24h"
+								}
+							]
+						},
+						"description": "Get swap statistics for a specific chain and time range"
+					}
+				}
+			]
+		},
+		{
+			"name": "Risk Management",
+			"item": [
+				{
+					"name": "Get Risk Policy",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/risk/policy/{{chain_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"risk",
+								"policy",
+								"{{chain_id}}"
+							]
+						},
+						"description": "Get risk policy configuration for a specific chain"
+					}
+				},
+				{
+					"name": "Update Risk Policy",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"maxSlippageBps\": 3000,\n  \"maxTtlSec\": 7200,\n  \"allowedFees\": [500, 3000, 10000],\n  \"paused\": false,\n  \"maxAmountIn\": \"1000000000000000000000\",\n  \"dailySwapLimit\": \"10000000000000000000000\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/risk/policy/{{chain_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"risk",
+								"policy",
+								"{{chain_id}}"
+							]
+						},
+						"description": "Update risk policy for a specific chain (admin only)"
+					}
+				}
+			]
+		},
+		{
+			"name": "Feature Flags",
+			"item": [
+				{
+					"name": "Get Feature Flag",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/feature-flag/{{flag_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"feature-flag",
+								"{{flag_key}}"
+							]
+						},
+						"description": "Get a specific feature flag configuration"
+					}
+				},
+				{
+					"name": "Update Feature Flag",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"value\": {\n    \"enabled\": true,\n    \"reason\": \"Feature enabled for testing\"\n  },\n  \"description\": \"Updated description\",\n  \"isActive\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/feature-flag/{{flag_key}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"feature-flag",
+								"{{flag_key}}"
+							]
+						},
+						"description": "Update a feature flag configuration (admin only)"
+					}
+				}
+			]
+		},
+		{
+			"name": "Analytics & Metrics",
+			"item": [
+				{
+					"name": "Get Pool Metrics (Daily)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/metrics/pool/{{pool_id}}/daily?date={{date}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"metrics",
+								"pool",
+								"{{pool_id}}",
+								"daily"
+							],
+							"query": [
+								{
+									"key": "date",
+									"value": "{{date}}"
+								}
+							]
+						},
+						"description": "Get daily metrics for a specific pool"
+					}
+				},
+				{
+					"name": "Get Protocol Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/metrics/protocol?date={{date}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"metrics",
+								"protocol"
+							],
+							"query": [
+								{
+									"key": "date",
+									"value": "{{date}}"
+								}
+							]
+						},
+						"description": "Get protocol-wide metrics for a specific date"
+					}
+				}
+			]
+		},
+		{
+			"name": "Health & Monitoring",
+			"item": [
+				{
+					"name": "Service Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health"
+							]
+						},
+						"description": "Check overall service health status"
+					}
+				},
+				{
+					"name": "Database Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health/database",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health",
+								"database"
+							]
+						},
+						"description": "Check database connection and health status"
+					}
+				},
+				{
+					"name": "Blockchain Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health/blockchain",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"health",
+								"blockchain"
+							]
+						},
+						"description": "Check blockchain connection and health status"
+					}
+				}
+			]
+		},
+		{
+			"name": "Token Management",
+			"item": [
+				{
+					"name": "Get Token Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/token/{{token_address}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"token",
+								"{{token_address}}"
+							]
+						},
+						"description": "Get detailed information about a specific token"
+					}
+				},
+				{
+					"name": "List Tokens",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/tokens?chainId=11155111&listed=true&limit=100&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"tokens"
+							],
+							"query": [
+								{
+									"key": "chainId",
+									"value": "11155111"
+								},
+								{
+									"key": "listed",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "100"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						},
+						"description": "List all tokens with filtering and pagination"
+					}
+				},
+				{
+					"name": "Update Token Status",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"listed\": true,\n  \"verified\": true,\n  \"riskFlags\": {\n    \"isStablecoin\": false,\n    \"verified\": true,\n    \"liquidity\": \"high\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/token/{{token_address}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"token",
+								"{{token_address}}"
+							]
+						},
+						"description": "Update token status and risk flags (admin only)"
+					}
+				}
+			]
+		},
+		{
+			"name": "Pool Management",
+			"item": [
+				{
+					"name": "Get Pool Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/pool/{{pool_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"pool",
+								"{{pool_id}}"
+							]
+						},
+						"description": "Get detailed information about a specific pool"
+					}
+				},
+				{
+					"name": "List Pools",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/pools?chainId=11155111&token0={{weth_address}}&feeTier=3000&isActive=true",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"pools"
+							],
+							"query": [
+								{
+									"key": "chainId",
+									"value": "11155111"
+								},
+								{
+									"key": "token0",
+									"value": "{{weth_address}}"
+								},
+								{
+									"key": "feeTier",
+									"value": "3000"
+								},
+								{
+									"key": "isActive",
+									"value": "true"
+								}
+							]
+						},
+						"description": "List all pools with filtering options"
+					}
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set default values for environment variables",
+					"if (!pm.environment.get('base_url')) {",
+					"    pm.environment.set('base_url', 'http://localhost:3001');",
+					"}",
+					"",
+					"if (!pm.environment.get('weth_address')) {",
+					"    pm.environment.set('weth_address', '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9');",
+					"}",
+					"",
+					"if (!pm.environment.get('usdc_address')) {",
+					"    pm.environment.set('usdc_address', '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238');",
+					"}",
+					"",
+					"if (!pm.environment.get('user_address')) {",
+					"    pm.environment.set('user_address', '0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6');",
+					"}",
+					"",
+					"if (!pm.environment.get('chain_id')) {",
+					"    pm.environment.set('chain_id', '11155111');",
+					"}",
+					"",
+					"// Generate current date for metrics",
+					"const today = new Date().toISOString().split('T')[0];",
+					"pm.environment.set('date', today);"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:3001",
+			"type": "string"
+		},
+		{
+			"key": "weth_address",
+			"value": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
+			"type": "string"
+		},
+		{
+			"key": "usdc_address",
+			"value": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+			"type": "string"
+		},
+		{
+			"key": "user_address",
+			"value": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
+			"type": "string"
+		},
+		{
+			"key": "chain_id",
+			"value": "11155111",
+			"type": "string"
+		},
+		{
+			"key": "swap_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "pool_id",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "flag_key",
+			"value": "SWAP_ENABLED",
+			"type": "string"
+		},
+		{
+			"key": "date",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
