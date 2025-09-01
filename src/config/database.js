@@ -1,46 +1,79 @@
-import mongoose from 'mongoose';
+import { Sequelize } from 'sequelize';
 import config from './env.js';
 
 /**
- * MongoDB Connection Configuration
- * Handles connection to MongoDB with proper error handling and reconnection logic
+ * PostgreSQL Connection Configuration
+ * Handles connection to PostgreSQL with proper error handling and reconnection logic
  */
+
+// Initialize sequelize instance immediately
+let sequelize;
+
+// Initialize sequelize instance based on config
+if (config.POSTGRES_URI) {
+    sequelize = new Sequelize(config.POSTGRES_URI, {
+        dialect: 'postgres',
+        logging: false, // Set to console.log for debugging
+        pool: {
+            max: 5,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
+        },
+        retry: {
+            max: 3
+        }
+    });
+} else {
+    sequelize = new Sequelize(
+        config.POSTGRES_DB,
+        config.POSTGRES_USER,
+        config.POSTGRES_PASSWORD,
+        {
+            host: config.POSTGRES_HOST,
+            port: config.POSTGRES_PORT,
+            dialect: 'postgres',
+            logging: false, // Set to console.log for debugging
+            pool: {
+                max: 5,
+                min: 0,
+                acquire: 30000,
+                idle: 10000
+            },
+            retry: {
+                max: 3
+            }
+        }
+    );
+}
 
 const connectDB = async () => {
     try {
-        const mongoURI = config.MONGODB_URI || 'mongodb://localhost:27017/tpay';
+        // Test the connection
+        await sequelize.authenticate();
+        console.log('PostgreSQL connected successfully');
         
-        await mongoose.connect(mongoURI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
-        
-        console.log('MongoDB connected successfully');
+        // Sync all models (create tables if they don't exist)
+        await sequelize.sync({ alter: true });
+        console.log('Database models synchronized');
         
         // Handle connection events
-        mongoose.connection.on('error', (err) => {
-            console.error('MongoDB connection error:', err);
-        });
-        
-        mongoose.connection.on('disconnected', () => {
-            console.log('MongoDB disconnected');
-        });
-        
-        mongoose.connection.on('reconnected', () => {
-            console.log('MongoDB reconnected');
+        sequelize.addHook('afterConnect', (connection) => {
+            console.log('New PostgreSQL connection established');
         });
         
         // Graceful shutdown
         process.on('SIGINT', async () => {
-            await mongoose.connection.close();
-            console.log('MongoDB connection closed through app termination');
+            await sequelize.close();
+            console.log('PostgreSQL connection closed through app termination');
             process.exit(0);
         });
         
     } catch (error) {
-        console.error('MongoDB connection failed:', error.message);
+        console.error('PostgreSQL connection failed:', error.message);
         process.exit(1);
     }
 };
 
+export { sequelize, connectDB };
 export default connectDB;

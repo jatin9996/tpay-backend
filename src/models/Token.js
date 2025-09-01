@@ -1,90 +1,102 @@
-import mongoose from 'mongoose';
+import { DataTypes, Model, Op, Sequelize } from 'sequelize';
+import { sequelize } from '../config/database.js';
 
 /**
- * Token Schema
+ * Token Model
  * Represents ERC-20 tokens in the system
  */
-const tokenSchema = new mongoose.Schema({
+class Token extends Model {}
+
+Token.init({
+    id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+    },
     address: {
-        type: String,
-        required: true,
+        type: DataTypes.STRING(42), // Ethereum address length
+        allowNull: false,
         unique: true,
-        lowercase: true,
-        trim: true
+        validate: {
+            isLowercase: true,
+            len: [42, 42] // Ethereum address length
+        }
     },
     symbol: {
-        type: String,
-        required: true,
-        uppercase: true,
-        trim: true
+        type: DataTypes.STRING(10),
+        allowNull: false,
+        validate: {
+            isUppercase: true
+        }
     },
     name: {
-        type: String,
-        required: true,
-        trim: true
+        type: DataTypes.STRING(100),
+        allowNull: false
     },
     decimals: {
-        type: Number,
-        required: true,
-        default: 18
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 18,
+        validate: {
+            min: 0,
+            max: 18
+        }
     },
     totalSupply: {
-        type: String,
-        required: false
+        type: DataTypes.STRING,
+        allowNull: true
     },
     chainId: {
-        type: Number,
-        required: true,
-        default: 11155111 // Sepolia default
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 11155111 // Sepolia default
     },
     isEssential: {
-        type: Boolean,
-        default: false
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
     },
     isActive: {
-        type: Boolean,
-        default: true
-    },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    updatedAt: {
-        type: Date,
-        default: Date.now
+        type: DataTypes.BOOLEAN,
+        defaultValue: true
     }
 }, {
-    timestamps: true
-});
-
-// Create compound indexes for search optimization
-tokenSchema.index({ symbol: 1, name: 1, address: 1 });
-tokenSchema.index({ symbol: 'text', name: 'text' });
-tokenSchema.index({ chainId: 1, isActive: 1 });
-
-// Pre-save middleware to update timestamps
-tokenSchema.pre('save', function(next) {
-    this.updatedAt = new Date();
-    next();
+    sequelize,
+    modelName: 'Token',
+    tableName: 'tokens',
+    timestamps: true,
+    indexes: [
+        {
+            name: 'idx_tokens_symbol_name_address',
+            fields: ['symbol', 'name', 'address']
+        },
+        {
+            name: 'idx_tokens_chain_active',
+            fields: ['chainId', 'isActive']
+        },
+        {
+            name: 'idx_tokens_address_lower',
+            fields: [Sequelize.fn('LOWER', Sequelize.col('address'))]
+        }
+    ]
 });
 
 // Static method to search tokens
-tokenSchema.statics.searchTokens = async function(query, limit = 20) {
-    const searchRegex = new RegExp(query, 'i');
-    
-    return this.find({
-        $or: [
-            { symbol: searchRegex },
-            { name: searchRegex },
-            { address: { $regex: `^${query}`, $options: 'i' } }
-        ],
-        isActive: true
-    })
-    .limit(limit)
-    .sort({ isEssential: -1, symbol: 1 }) // Essential tokens first, then alphabetically
-    .lean();
+Token.searchTokens = async function(query, limit = 20) {
+    return this.findAll({
+        where: {
+            [Op.or]: [
+                { symbol: { [Op.iLike]: `%${query}%` } },
+                { name: { [Op.iLike]: `%${query}%` } },
+                { address: { [Op.iLike]: `${query}%` } }
+            ],
+            isActive: true
+        },
+        limit: limit,
+        order: [
+            ['isEssential', 'DESC'],
+            ['symbol', 'ASC']
+        ]
+    });
 };
-
-const Token = mongoose.model('Token', tokenSchema);
 
 export default Token;
