@@ -350,6 +350,194 @@ class SwapDatabaseService {
             return false; // Default to disabled if error
         }
     }
+
+    /**
+     * Get supported tokens for frontend
+     */
+    async getSupportedTokens(chainId) {
+        try {
+            const tokens = await Token.findAll({
+                where: { 
+                    chainId: parseInt(chainId),
+                    isActive: true,
+                    blacklisted: false
+                },
+                order: [['volume24h', 'DESC']]
+            });
+            
+            return tokens;
+        } catch (error) {
+            console.error('Error getting supported tokens:', error);
+            throw new Error(`Failed to get supported tokens: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get token by address
+     */
+    async getTokenByAddress(address, chainId) {
+        try {
+            const token = await Token.findOne({
+                where: { 
+                    address: address.toLowerCase(),
+                    chainId: parseInt(chainId)
+                }
+            });
+            
+            return token;
+        } catch (error) {
+            console.error('Error getting token by address:', error);
+            throw new Error(`Failed to get token: ${error.message}`);
+        }
+    }
+
+    /**
+     * Execute swap with enhanced error handling
+     */
+    async executeSwap(swapData, requestInfo) {
+        try {
+            // Create swap record
+            const swap = await this.createSwap({
+                ...swapData,
+                isCustodial: false, // Frontend swaps are non-custodial
+                userAddress: requestInfo.userAddress,
+                clientRequestId: swapData.clientRequestId || `frontend_${Date.now()}`
+            });
+
+            // Return swap record for frontend
+            return swap;
+        } catch (error) {
+            console.error('Error executing swap:', error);
+            throw new Error(`Failed to execute swap: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get user swaps with filtering
+     */
+    async getUserSwaps(userAddress, options = {}) {
+        try {
+            const { limit = 20, offset = 0, status } = options;
+            
+            const whereClause = { userAddress: userAddress.toLowerCase() };
+            if (status) {
+                whereClause.status = status;
+            }
+
+            const swaps = await Swap.findAndCountAll({
+                where: whereClause,
+                limit,
+                offset,
+                order: [['createdAt', 'DESC']],
+                include: [
+                    { model: Transaction, as: 'transaction' }
+                ]
+            });
+            
+            return swaps;
+        } catch (error) {
+            console.error('Error getting user swaps:', error);
+            throw new Error(`Failed to get user swaps: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get token statistics
+     */
+    async getTokenStats(chainId, timeRange = '24h') {
+        try {
+            const now = new Date();
+            let startDate;
+            
+            switch(timeRange) {
+                case '1h':
+                    startDate = new Date(now - 60 * 60 * 1000);
+                    break;
+                case '24h':
+                    startDate = new Date(now - 24 * 60 * 60 * 1000);
+                    break;
+                case '7d':
+                    startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case '30d':
+                    startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    startDate = new Date(now - 24 * 60 * 60 * 1000);
+            }
+
+            const whereClause = {
+                createdAt: { [Op.gte]: startDate }
+            };
+            
+            if (chainId) {
+                whereClause.chainId = parseInt(chainId);
+            }
+
+            const stats = await Swap.findAll({
+                where: whereClause,
+                attributes: [
+                    [sequelize.fn('COUNT', sequelize.col('id')), 'totalSwaps'],
+                    [sequelize.fn('SUM', sequelize.cast(sequelize.col('amountIn'), 'NUMERIC')), 'totalVolumeIn'],
+                    [sequelize.fn('SUM', sequelize.cast(sequelize.col('expectedOut'), 'NUMERIC')), 'totalVolumeOut']
+                ]
+            });
+
+            return stats[0] || { totalSwaps: 0, totalVolumeIn: 0, totalVolumeOut: 0 };
+        } catch (error) {
+            console.error('Error getting token stats:', error);
+            throw new Error(`Failed to get token stats: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get quote statistics
+     */
+    async getQuoteStats(chainId, timeRange = '24h') {
+        try {
+            const now = new Date();
+            let startDate;
+            
+            switch(timeRange) {
+                case '1h':
+                    startDate = new Date(now - 60 * 60 * 1000);
+                    break;
+                case '24h':
+                    startDate = new Date(now - 24 * 60 * 60 * 1000);
+                    break;
+                case '7d':
+                    startDate = new Date(now - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case '30d':
+                    startDate = new Date(now - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    startDate = new Date(now - 24 * 60 * 60 * 1000);
+            }
+
+            const whereClause = {
+                createdAt: { [Op.gte]: startDate }
+            };
+            
+            if (chainId) {
+                whereClause.chainId = chainId;
+            }
+
+            const stats = await Quote.findAll({
+                where: whereClause,
+                attributes: [
+                    [sequelize.fn('COUNT', sequelize.col('id')), 'totalQuotes'],
+                    [sequelize.fn('COUNT', sequelize.literal('CASE WHEN status = \'used\' THEN 1 END')), 'usedQuotes'],
+                    [sequelize.fn('COUNT', sequelize.literal('CASE WHEN status = \'expired\' THEN 1 END')), 'expiredQuotes']
+                ]
+            });
+
+            return stats[0] || { totalQuotes: 0, usedQuotes: 0, expiredQuotes: 0 };
+        } catch (error) {
+            console.error('Error getting quote stats:', error);
+            throw new Error(`Failed to get quote stats: ${error.message}`);
+        }
+    }
 }
 
 export default new SwapDatabaseService();
