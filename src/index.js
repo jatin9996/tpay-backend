@@ -11,6 +11,7 @@ import searchRoutes from "./routes/search.js";
 import wethApprovalRoutes from "./routes/wethApproval.js";
 import quoteRoutes from "./routes/quote.js";
 import tokensTrendingRoutes from "./routes/tokensTrending.js";
+import frontendRoutes from "./routes/frontend.js";
 import { runAggregatorPeriodically } from "./jobs/swaps-24h-aggregate.js";
 
 const app = express();
@@ -29,6 +30,7 @@ app.use("/tokens", tokensTrendingRoutes);
 app.use("/search", searchRoutes);
 app.use("/api/weth", wethApprovalRoutes);
 app.use("/quote", quoteRoutes);
+app.use("/frontend", frontendRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`Server running on port ${config.PORT}`);
