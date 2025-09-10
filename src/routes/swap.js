@@ -198,6 +198,52 @@ function encodeV3Path(pathTokens) {
 }
 
 /**
+ * Reverse a V3 path token-fee sequence for exactOutput
+ * Example: [A,fee1,B,fee2,C] -> [C,fee2,B,fee1,A]
+ */
+function reverseV3Path(pathTokens) {
+    const tokens = [];
+    const fees = [];
+    for (let i = 0; i < pathTokens.length; i++) {
+        if (typeof pathTokens[i] === 'string' && ethers.isAddress(pathTokens[i])) {
+            tokens.push(pathTokens[i]);
+        } else {
+            fees.push(pathTokens[i]);
+        }
+    }
+    const reversed = [];
+    for (let i = tokens.length - 1; i >= 0; i--) {
+        reversed.push(tokens[i]);
+        if (i > 0) {
+            reversed.push(fees[i - 1]);
+        }
+    }
+    return reversed;
+}
+
+/**
+ * Normalize slippage to basis points (0-10000)
+ * - Prefers slippagePct as percent value (e.g. 0.5 => 50 bps)
+ * - Fallback to slippageTolerance: if <=1 treat as fraction (e.g. 0.005 => 50 bps); else as percent
+ */
+function getSlippageBps(slippagePct, slippageTolerance) {
+    if (slippagePct !== undefined && slippagePct !== null) {
+        const pct = Number(slippagePct);
+        if (!Number.isFinite(pct) || pct <= 0) return 0;
+        return Math.min(10000, Math.max(0, Math.floor(pct * 100)));
+    }
+    if (slippageTolerance !== undefined && slippageTolerance !== null) {
+        const tol = Number(slippageTolerance);
+        if (!Number.isFinite(tol) || tol <= 0) return 0;
+        if (tol <= 1) {
+            return Math.min(10000, Math.max(0, Math.floor(tol * 10000)));
+        }
+        return Math.min(10000, Math.max(0, Math.floor(tol * 100)));
+    }
+    return 0;
+}
+
+/**
  * Generate route candidates for smart order routing
  */
 async function generateRouteCandidates(tokenIn, tokenOut, chainId) {
@@ -344,14 +390,18 @@ router.post("/swap", async (req, res) => {
             recipient,
             fee,
             slippageTolerance,
+            slippagePct,
             ttl,
             mode = 'EXACT_IN',
             clientRequestId = uuidv4(),
-            userAddress
+            userAddress,
+            path: providedPath,
+            route: providedRoute,
+            pathTokens: providedPathTokens
         } = req.body;
 
         // Validate required fields
-        if (!tokenIn || !tokenOut || !recipient || !fee || !slippageTolerance || !ttl) {
+        if (!tokenIn || !tokenOut || !recipient || !fee || (!slippageTolerance && slippagePct === undefined) || !ttl) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields: tokenIn, tokenOut, recipient, fee, slippageTolerance, ttl'
@@ -421,6 +471,7 @@ router.post("/swap", async (req, res) => {
         // Calculate amounts based on mode
         let amountInWei, expectedOut, minOut, requiredIn, maxIn;
         let deadline;
+        const slippageBps = getSlippageBps(slippagePct, slippageTolerance);
 
         if (mode === 'EXACT_IN') {
             if (!amountIn) {
@@ -433,17 +484,46 @@ router.post("/swap", async (req, res) => {
             amountInWei = ethers.parseUnits(amountIn, tokenInValid.decimals);
             deadline = Math.floor(Date.now() / 1000) + ttl;
 
-            // Get quote for exact input
+            // Build or select route and quote
             try {
-                expectedOut = await quoter.quoteExactInputSingle.staticCall(
-                    tokenIn,
-                    tokenOut,
-                    fee,
-                    amountInWei,
-                    0
-                );
-                
-                minOut = expectedOut * BigInt(Math.floor((1 - slippageTolerance) * 10000)) / 10000n;
+                let routeInfo;
+                if (providedPath) {
+                    routeInfo = { kind: 'multi', path: providedPath, pathTokens: providedPathTokens || null };
+                    expectedOut = await quoter.quoteExactInput.staticCall(providedPath, amountInWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length > 1) {
+                    const pathTokens = [];
+                    for (let i = 0; i < providedRoute.length; i++) {
+                        const hop = providedRoute[i];
+                        pathTokens.push(hop.tokenIn);
+                        pathTokens.push(hop.fee);
+                        if (i === providedRoute.length - 1) {
+                            pathTokens.push(hop.tokenOut);
+                        }
+                    }
+                    const path = encodeV3Path(pathTokens);
+                    routeInfo = { kind: 'multi', path, pathTokens };
+                    expectedOut = await quoter.quoteExactInput.staticCall(path, amountInWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length === 1) {
+                    const hop = providedRoute[0];
+                    routeInfo = { kind: 'single', fee: hop.fee };
+                    expectedOut = await quoter.quoteExactInputSingle.staticCall(
+                        hop.tokenIn, hop.tokenOut, hop.fee, amountInWei, 0
+                    );
+                } else {
+                    // Auto-route selection
+                    const candidates = await generateRouteCandidates(tokenIn, tokenOut, chainId);
+                    const evals = await evaluateRoutes(candidates, amountInWei, 'EXACT_IN');
+                    if (evals.length === 0) throw new Error('No executable route');
+                    const best = evals[0];
+                    expectedOut = best.amountOut;
+                    routeInfo = best;
+                }
+
+                // Compute minOut using bps
+                minOut = (expectedOut * BigInt(10000 - slippageBps)) / 10000n;
+
+                // Persist chosen route in context for execution
+                req._tpayRouteInfo = routeInfo;
             } catch (error) {
                 console.error('Quote failed:', error);
                 return res.status(400).json({
@@ -462,20 +542,48 @@ router.post("/swap", async (req, res) => {
             const amountOutWei = ethers.parseUnits(amountOutMinimum, tokenOutValid.decimals);
             deadline = Math.floor(Date.now() / 1000) + ttl;
 
-            // Get quote for exact output
+            // Build or select route and quote
             try {
-                requiredIn = await quoter.quoteExactOutputSingle.staticCall(
-                    tokenIn,
-                    tokenOut,
-                    fee,
-                    amountOutWei,
-                    0
-                );
-                
-                maxIn = requiredIn * BigInt(Math.floor((1 + slippageTolerance) * 10000)) / 10000n;
+                let routeInfo;
+                if (providedPath) {
+                    // For exactOutput, path must be reversed (tokenOut->tokenIn)
+                    routeInfo = { kind: 'multi', path: providedPath, pathTokens: providedPathTokens || null };
+                    requiredIn = await quoter.quoteExactOutput.staticCall(providedPath, amountOutWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length > 1) {
+                    const pathTokens = [];
+                    for (let i = providedRoute.length - 1; i >= 0; i--) {
+                        const hop = providedRoute[i];
+                        pathTokens.push(hop.tokenOut);
+                        pathTokens.push(hop.fee);
+                        if (i === 0) {
+                            pathTokens.push(hop.tokenIn);
+                        }
+                    }
+                    const path = encodeV3Path(pathTokens);
+                    routeInfo = { kind: 'multi', path, pathTokens };
+                    requiredIn = await quoter.quoteExactOutput.staticCall(path, amountOutWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length === 1) {
+                    const hop = providedRoute[0];
+                    routeInfo = { kind: 'single', fee: hop.fee };
+                    requiredIn = await quoter.quoteExactOutputSingle.staticCall(
+                        hop.tokenIn, hop.tokenOut, hop.fee, amountOutWei, 0
+                    );
+                } else {
+                    // Auto-route selection
+                    const candidates = await generateRouteCandidates(tokenIn, tokenOut, chainId);
+                    const evals = await evaluateRoutes(candidates, amountOutWei, 'EXACT_OUT');
+                    if (evals.length === 0) throw new Error('No executable route');
+                    const best = evals[0];
+                    requiredIn = best.amountIn;
+                    routeInfo = best;
+                }
+
+                // Compute maxIn using bps
+                maxIn = (requiredIn * BigInt(10000 + slippageBps)) / 10000n;
                 amountInWei = maxIn;
                 expectedOut = amountOutWei;
                 minOut = amountOutWei;
+                req._tpayRouteInfo = routeInfo;
             } catch (error) {
                 console.error('Quote failed:', error);
                 return res.status(400).json({
@@ -517,18 +625,31 @@ router.post("/swap", async (req, res) => {
         // Execute swap on blockchain
         let txHash, gasUsed, gasPrice;
         try {
-            const swapParams = {
-                tokenIn,
-                tokenOut,
-                fee,
-                recipient,
-                deadline,
-                amountIn: amountInWei,
-                amountOutMinimum: minOut,
-                sqrtPriceLimitX96: 0
-            };
-
-            const tx = await uniswapRouter.exactInputSingle(swapParams);
+            let tx;
+            const routeInfo = req._tpayRouteInfo;
+            if (routeInfo && routeInfo.kind === 'multi') {
+                const pathBytes = routeInfo.path || encodeV3Path(routeInfo.pathTokens);
+                const swapParams = {
+                    path: pathBytes,
+                    recipient,
+                    deadline,
+                    amountIn: amountInWei,
+                    amountOutMinimum: minOut
+                };
+                tx = await uniswapRouter.exactInput(swapParams);
+            } else {
+                const swapParams = {
+                    tokenIn,
+                    tokenOut,
+                    fee: routeInfo?.fee || fee,
+                    recipient,
+                    deadline,
+                    amountIn: amountInWei,
+                    amountOutMinimum: minOut,
+                    sqrtPriceLimitX96: 0
+                };
+                tx = await uniswapRouter.exactInputSingle(swapParams);
+            }
             const receipt = await tx.wait();
 
             txHash = tx.hash;
@@ -765,18 +886,19 @@ router.post("/swap/exact-out", async (req, res) => {
         // Execute swap on blockchain
         let txHash, gasUsed, gasPrice;
         try {
+            let tx;
+            const routeInfo = { kind: 'single', fee };
             const swapParams = {
                 tokenIn,
                 tokenOut,
-                fee,
+                fee: routeInfo.fee,
                 recipient,
                 deadline,
                 amountOut: amountOutWei,
                 amountInMaximum: amountInMaximumWei,
                 sqrtPriceLimitX96: 0
             };
-
-            const tx = await uniswapRouter.exactOutputSingle(swapParams);
+            tx = await uniswapRouter.exactOutputSingle(swapParams);
             const receipt = await tx.wait();
 
             txHash = tx.hash;
@@ -865,14 +987,18 @@ router.post("/swap/populate", async (req, res) => {
             recipient,
             fee,
             slippageTolerance,
+            slippagePct,
             ttl,
             mode = 'EXACT_IN',
             clientRequestId = uuidv4(),
-            userAddress
+            userAddress,
+            path: providedPath,
+            route: providedRoute,
+            pathTokens: providedPathTokens
         } = req.body;
 
         // Validate required fields
-        if (!tokenIn || !tokenOut || !recipient || !fee || !slippageTolerance || !ttl) {
+        if (!tokenIn || !tokenOut || !recipient || !fee || (!slippageTolerance && slippagePct === undefined) || !ttl) {
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields: tokenIn, tokenOut, recipient, fee, slippageTolerance, ttl'
@@ -954,17 +1080,38 @@ router.post("/swap/populate", async (req, res) => {
             amountInWei = ethers.parseUnits(amountIn, tokenInValid.decimals);
             deadline = Math.floor(Date.now() / 1000) + ttl;
 
-            // Get quote for exact input
             try {
-                expectedOut = await quoter.quoteExactInputSingle.staticCall(
-                    tokenIn,
-                    tokenOut,
-                    fee,
-                    amountInWei,
-                    0
-                );
-                
-                minOut = expectedOut * BigInt(Math.floor((1 - slippageTolerance) * 10000)) / 10000n;
+                let routeInfo;
+                if (providedPath) {
+                    routeInfo = { kind: 'multi', path: providedPath, pathTokens: providedPathTokens || null };
+                    expectedOut = await quoter.quoteExactInput.staticCall(providedPath, amountInWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length > 1) {
+                    const pathTokensSel = [];
+                    for (let i = 0; i < providedRoute.length; i++) {
+                        const hop = providedRoute[i];
+                        pathTokensSel.push(hop.tokenIn);
+                        pathTokensSel.push(hop.fee);
+                        if (i === providedRoute.length - 1) {
+                            pathTokensSel.push(hop.tokenOut);
+                        }
+                    }
+                    const pathSel = encodeV3Path(pathTokensSel);
+                    routeInfo = { kind: 'multi', path: pathSel, pathTokens: pathTokensSel };
+                    expectedOut = await quoter.quoteExactInput.staticCall(pathSel, amountInWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length === 1) {
+                    const hop = providedRoute[0];
+                    routeInfo = { kind: 'single', fee: hop.fee };
+                    expectedOut = await quoter.quoteExactInputSingle.staticCall(hop.tokenIn, hop.tokenOut, hop.fee, amountInWei, 0);
+                } else {
+                    const candidates = await generateRouteCandidates(tokenIn, tokenOut, chainId);
+                    const evals = await evaluateRoutes(candidates, amountInWei, 'EXACT_IN');
+                    if (evals.length === 0) throw new Error('No executable route');
+                    const best = evals[0];
+                    expectedOut = best.amountOut;
+                    routeInfo = best;
+                }
+                minOut = (expectedOut * BigInt(10000 - getSlippageBps(slippagePct, slippageTolerance))) / 10000n;
+                req._tpayRouteInfo = routeInfo;
             } catch (error) {
                 console.error('Quote failed:', error);
                 return res.status(400).json({
@@ -983,20 +1130,40 @@ router.post("/swap/populate", async (req, res) => {
             const amountOutWei = ethers.parseUnits(amountOutMinimum, tokenOutValid.decimals);
             deadline = Math.floor(Date.now() / 1000) + ttl;
 
-            // Get quote for exact output
             try {
-                requiredIn = await quoter.quoteExactOutputSingle.staticCall(
-                    tokenIn,
-                    tokenOut,
-                    fee,
-                    amountOutWei,
-                    0
-                );
-                
-                maxIn = requiredIn * BigInt(Math.floor((1 + slippageTolerance) * 10000)) / 10000n;
+                let routeInfo;
+                if (providedPath) {
+                    routeInfo = { kind: 'multi', path: providedPath, pathTokens: providedPathTokens || null };
+                    requiredIn = await quoter.quoteExactOutput.staticCall(providedPath, amountOutWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length > 1) {
+                    const pathTokensSel = [];
+                    for (let i = providedRoute.length - 1; i >= 0; i--) {
+                        const hop = providedRoute[i];
+                        pathTokensSel.push(hop.tokenOut);
+                        pathTokensSel.push(hop.fee);
+                        if (i === 0) pathTokensSel.push(hop.tokenIn);
+                    }
+                    const pathSel = encodeV3Path(pathTokensSel);
+                    routeInfo = { kind: 'multi', path: pathSel, pathTokens: pathTokensSel };
+                    requiredIn = await quoter.quoteExactOutput.staticCall(pathSel, amountOutWei);
+                } else if (providedRoute && Array.isArray(providedRoute) && providedRoute.length === 1) {
+                    const hop = providedRoute[0];
+                    routeInfo = { kind: 'single', fee: hop.fee };
+                    requiredIn = await quoter.quoteExactOutputSingle.staticCall(hop.tokenIn, hop.tokenOut, hop.fee, amountOutWei, 0);
+                } else {
+                    const candidates = await generateRouteCandidates(tokenIn, tokenOut, chainId);
+                    const evals = await evaluateRoutes(candidates, amountOutWei, 'EXACT_OUT');
+                    if (evals.length === 0) throw new Error('No executable route');
+                    const best = evals[0];
+                    requiredIn = best.amountIn;
+                    routeInfo = best;
+                }
+                const bps = getSlippageBps(slippagePct, slippageTolerance);
+                maxIn = (requiredIn * BigInt(10000 + bps)) / 10000n;
                 amountInWei = maxIn;
                 expectedOut = amountOutWei;
                 minOut = amountOutWei;
+                req._tpayRouteInfo = routeInfo;
             } catch (error) {
                 console.error('Quote failed:', error);
                 return res.status(400).json({
@@ -1009,30 +1176,53 @@ router.post("/swap/populate", async (req, res) => {
         // Estimate gas
         let estimatedGas;
         try {
+            const routeInfo = req._tpayRouteInfo;
             if (mode === 'EXACT_IN') {
-                const swapParams = {
-                    tokenIn,
-                    tokenOut,
-                    fee,
-                    recipient,
-                    deadline,
-                    amountIn: amountInWei,
-                    amountOutMinimum: minOut,
-                    sqrtPriceLimitX96: 0
-                };
-                estimatedGas = await uniswapRouter.exactInputSingle.estimateGas(swapParams);
+                if (routeInfo && routeInfo.kind === 'multi') {
+                    const gasParams = {
+                        path: routeInfo.path || encodeV3Path(routeInfo.pathTokens),
+                        recipient,
+                        deadline,
+                        amountIn: amountInWei,
+                        amountOutMinimum: minOut
+                    };
+                    estimatedGas = await uniswapRouter.exactInput.estimateGas(gasParams);
+                } else {
+                    const swapParams = {
+                        tokenIn,
+                        tokenOut,
+                        fee: routeInfo?.fee || fee,
+                        recipient,
+                        deadline,
+                        amountIn: amountInWei,
+                        amountOutMinimum: minOut,
+                        sqrtPriceLimitX96: 0
+                    };
+                    estimatedGas = await uniswapRouter.exactInputSingle.estimateGas(swapParams);
+                }
             } else {
-                const swapParams = {
-                    tokenIn,
-                    tokenOut,
-                    fee,
-                    recipient,
-                    deadline,
-                    amountOut: ethers.parseUnits(amountOutMinimum, tokenOutValid.decimals),
-                    amountInMaximum: amountInWei,
-                    sqrtPriceLimitX96: 0
-                };
-                estimatedGas = await uniswapRouter.exactOutputSingle.estimateGas(swapParams);
+                if (routeInfo && routeInfo.kind === 'multi') {
+                    const gasParams = {
+                        path: routeInfo.path || encodeV3Path(routeInfo.pathTokens),
+                        recipient,
+                        deadline,
+                        amountOut: ethers.parseUnits(amountOutMinimum, tokenOutValid.decimals),
+                        amountInMaximum: amountInWei
+                    };
+                    estimatedGas = await uniswapRouter.exactOutput.estimateGas(gasParams);
+                } else {
+                    const swapParams = {
+                        tokenIn,
+                        tokenOut,
+                        fee: routeInfo?.fee || fee,
+                        recipient,
+                        deadline,
+                        amountOut: ethers.parseUnits(amountOutMinimum, tokenOutValid.decimals),
+                        amountInMaximum: amountInWei,
+                        sqrtPriceLimitX96: 0
+                    };
+                    estimatedGas = await uniswapRouter.exactOutputSingle.estimateGas(swapParams);
+                }
             }
         } catch (error) {
             console.error('Gas estimation failed:', error);
@@ -1092,7 +1282,35 @@ router.post("/swap/populate", async (req, res) => {
             sqrtPriceLimitX96: 0
         };
 
-        const populatedTx = await uniswapRouter[mode === 'EXACT_IN' ? 'exactInputSingle' : 'exactOutputSingle'].populateTransaction(swapParams);
+        let populatedTx;
+        const routeInfo = req._tpayRouteInfo;
+        if (mode === 'EXACT_IN') {
+            if (routeInfo && routeInfo.kind === 'multi') {
+                const txParams = {
+                    path: routeInfo.path || encodeV3Path(routeInfo.pathTokens),
+                    recipient,
+                    deadline,
+                    amountIn: amountInWei,
+                    amountOutMinimum: minOut
+                };
+                populatedTx = await uniswapRouter.exactInput.populateTransaction(txParams);
+            } else {
+                populatedTx = await uniswapRouter.exactInputSingle.populateTransaction(swapParams);
+            }
+        } else {
+            if (routeInfo && routeInfo.kind === 'multi') {
+                const txParams = {
+                    path: routeInfo.path || encodeV3Path(routeInfo.pathTokens),
+                    recipient,
+                    deadline,
+                    amountOut: ethers.parseUnits(amountOutMinimum, tokenOutValid.decimals),
+                    amountInMaximum: amountInWei
+                };
+                populatedTx = await uniswapRouter.exactOutput.populateTransaction(txParams);
+            } else {
+                populatedTx = await uniswapRouter.exactOutputSingle.populateTransaction(swapParams);
+            }
+        }
 
         res.json({
             success: true,
