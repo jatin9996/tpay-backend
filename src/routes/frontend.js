@@ -123,14 +123,6 @@ router.post("/quote", rateLimiter, async (req, res) => {
 
         const quote = await quoteService.generateQuote(req.body, requestInfo);
         
-        // Calculate price impact
-        const priceImpact = await priceFeedService.calculatePriceImpact(
-            req.body.tokenIn,
-            req.body.tokenOut,
-            req.body.amountIn,
-            req.body.chainId || config.DEFAULT_CHAIN_ID
-        );
-
         // Format response for frontend
         const frontendQuote = {
             quoteId: quote.quoteId,
@@ -142,7 +134,7 @@ router.post("/quote", rateLimiter, async (req, res) => {
                 address: req.body.tokenOut,
                 amount: quote.amountOut
             },
-            priceImpact: priceImpact.impact,
+            priceImpact: quote.priceImpactPct ? Number(quote.priceImpactPct) : 0,
             slippage: req.body.slippagePct || 0.5,
             route: quote.route,
             estimatedGas: quote.estimatedGas || "0",

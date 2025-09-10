@@ -111,7 +111,9 @@ class QuoteService {
     }
 
     calcMinOutFromSlippage(amountOut, slippagePct = 0.5, isExactOut = false) {
-        const bps = Math.floor(Number(slippagePct) * 100);
+        // Normalize percent to basis points
+        const pct = Number(slippagePct);
+        const bps = Number.isFinite(pct) ? Math.floor(pct * 100) : 0;
         const DENOM = 10_000n;
         if (isExactOut) {
             return (BigInt(amountOut) * (DENOM + BigInt(bps))) / DENOM;
@@ -358,6 +360,23 @@ class QuoteService {
             }
             
             const encodedPath = this.encodeV3Path(best.pathTokens);
+
+            // Basic price impact approximation using external price feeds
+            // Fetch priceIn and priceOut (USD) when available
+            let priceImpactPct = "0";
+            try {
+                // Lazy import to avoid circular deps
+                const { default: priceFeedService } = await import('./priceFeedService.js');
+                const priceIn = await priceFeedService.getTokenPrice(tIn, chainId);
+                const priceOut = await priceFeedService.getTokenPrice(tOut, chainId);
+                if (priceIn > 0 && priceOut > 0) {
+                    const inputValueUsd = Number(amountIn) * priceIn;
+                    const outAmount = mode === 'EXACT_IN' ? Number(ethers.formatUnits(best.amountOut, decOut)) : Number(ethers.formatUnits(BigInt(amountIn), decOut));
+                    const expectedOutFromUsd = inputValueUsd / priceOut;
+                    const impact = expectedOutFromUsd > 0 ? Math.max(0, ((expectedOutFromUsd - outAmount) / expectedOutFromUsd) * 100) : 0;
+                    priceImpactPct = impact.toFixed(4);
+                }
+            } catch {}
             const nowSec = Math.floor(Date.now() / 1000);
             const expiresAtSec = nowSec + Math.min(Math.max(1, Number(ttlSec || 600)), 24 * 60 * 60);
             const quoteId = `q_${ethers.hexlify(ethers.randomBytes(8)).slice(2)}`;
@@ -369,8 +388,8 @@ class QuoteService {
                 quoteId,
                 expiresAt: expiresAtSec,
                 mode,
-                priceImpactPct: "0", // Placeholder
-                estimatedGas: "0", // Placeholder
+                priceImpactPct,
+                estimatedGas: "0",
                 fromCache: false
             };
             
