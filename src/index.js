@@ -8,7 +8,7 @@ import liquidityRoutes from "./routes/liquidity.js";
 import poolRoutes from "./routes/pools.js";
 import tokenRoutes from "./routes/tokens.js";
 import searchRoutes from "./routes/search.js";
-import wethApprovalRoutes from "./routes/wethApproval.js";
+import tokenApprovalRoutes from "./routes/tokenApproval.js";
 import quoteRoutes from "./routes/quote.js";
 import tokensTrendingRoutes from "./routes/tokensTrending.js";
 import frontendRoutes from "./routes/frontend.js";
@@ -28,7 +28,7 @@ app.use("/data", poolRoutes);
 app.use("/tokens", tokenRoutes);
 app.use("/tokens", tokensTrendingRoutes);
 app.use("/search", searchRoutes);
-app.use("/api/weth", wethApprovalRoutes);
+app.use("/api/token", tokenApprovalRoutes);
 app.use("/quote", quoteRoutes);
 app.use("/frontend", frontendRoutes);
 
