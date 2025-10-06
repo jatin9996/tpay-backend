@@ -1,4 +1,5 @@
 import express from "express";
+import axios from "axios";
 import rateLimiter from "../middleware/rateLimiter.js";
 import quoteService from "../services/quoteService.js";
 import priceFeedService from "../services/priceFeedService.js";
@@ -385,6 +386,108 @@ router.get("/stats", rateLimiter, async (req, res) => {
             error: "Failed to fetch statistics",
             details: error.message
         });
+    }
+});
+
+/**
+ * GET /frontend/pools/analytics
+ * Returns pool analytics suitable for the Pool Analytics UI
+ * Data source: Uniswap V3 The Graph subgraph + our DB fallbacks
+ * Query params:
+ * - poolAddress (optional): focus on a specific pool
+ * - chainId (optional)
+ * - range: 1d|7d|30d|1y (default 7d)
+ */
+router.get("/pools/analytics", rateLimiter, async (req, res) => {
+    try {
+        const { poolAddress, chainId = config.DEFAULT_CHAIN_ID, range = '7d' } = req.query;
+
+        // Map UI range to day bucket
+        const rangeToDays = { '1d': 1, '7d': 7, '30d': 30, '1y': 365 };
+        const days = rangeToDays[range] ?? 7;
+
+        // Subgraph endpoint
+        const GRAPH_URL = "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3";
+
+        // Build GraphQL queries
+        const dayDataQuery = (poolId) => `{
+          pool(id: "${poolId?.toLowerCase()}") {
+            id
+            totalValueLockedUSD
+            volumeUSD
+            feesUSD
+            token0 { symbol id }
+            token1 { symbol id }
+            poolDayData(first: ${days}, orderBy: date, orderDirection: desc) {
+              date
+              volumeUSD
+              tvlUSD
+              feesUSD
+            }
+          }
+        }`;
+
+        const topPoolsQuery = `{
+          pools(first: 1, orderBy: totalValueLockedUSD, orderDirection: desc) {
+            id
+            totalValueLockedUSD
+            volumeUSD
+            feesUSD
+            token0 { symbol id }
+            token1 { symbol id }
+            poolDayData(first: ${days}, orderBy: date, orderDirection: desc) {
+              date
+              volumeUSD
+              tvlUSD
+              feesUSD
+            }
+          }
+        }`;
+
+        // Fetch from subgraph
+        const gql = poolAddress ? dayDataQuery(poolAddress) : topPoolsQuery;
+        const resp = await axios.post(GRAPH_URL, { query: gql });
+        const pool = poolAddress ? resp.data?.data?.pool : resp.data?.data?.pools?.[0];
+
+        if (!pool) {
+            return res.status(404).json({ success: false, error: "Pool not found in subgraph" });
+        }
+
+        // Shape response for frontend UI
+        const daySeries = (pool.poolDayData || []).map(d => ({
+            date: new Date(d.date * 1000).toISOString(),
+            volumeUsd: Number(d.volumeUSD || 0),
+            tvlUsd: Number(d.tvlUSD || 0),
+            feesUsd: Number(d.feesUSD || 0)
+        })).reverse();
+
+        const totalLiquidity = Number(pool.totalValueLockedUSD || 0);
+        const volume24h = daySeries.at(-1)?.volumeUsd ?? 0;
+        const volume7d = daySeries.slice(-7).reduce((s, x) => s + x.volumeUsd, 0);
+
+        // APR approximation: (fees over last 7d / TVL) * 52
+        const fees7d = daySeries.slice(-7).reduce((s, x) => s + x.feesUsd, 0);
+        const apr = totalLiquidity > 0 ? ((fees7d / totalLiquidity) * 52) * 100 : 0;
+
+        res.json({
+            success: true,
+            pool: {
+                id: pool.id,
+                token0: pool.token0,
+                token1: pool.token1,
+                totalLiquidityUSD: totalLiquidity,
+                volume24hUSD: volume24h,
+                volume7dUSD: volume7d,
+                aprPct: Number(apr.toFixed(2))
+            },
+            series: daySeries,
+            chainId: parseInt(chainId),
+            range,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error("/frontend/pools/analytics error:", error.message);
+        res.status(500).json({ success: false, error: "Failed to fetch pool analytics", details: error.message });
     }
 });
 

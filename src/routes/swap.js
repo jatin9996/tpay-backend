@@ -40,6 +40,7 @@ const __dirname = path.dirname(__filename);
 const routerABI = JSON.parse(fs.readFileSync(path.join(__dirname, "../../node_modules/@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json"), 'utf8'));
 
 // Create a minimal Quoter ABI since it's not included in the standard package
+// Include both single-hop and multi-hop quoting functions used below
 const quoterABI = {
   abi: [
     {
@@ -83,6 +84,18 @@ const quoterABI = {
     },
     {
       "inputs": [
+        { "internalType": "bytes", "name": "path", "type": "bytes" },
+        { "internalType": "uint256", "name": "amountIn", "type": "uint256" }
+      ],
+      "name": "quoteExactInput",
+      "outputs": [
+        { "internalType": "uint256", "name": "amountOut", "type": "uint256" }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
         {
           "internalType": "address",
           "name": "tokenIn",
@@ -116,6 +129,18 @@ const quoterABI = {
           "name": "amountIn",
           "type": "uint256"
         }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "bytes", "name": "path", "type": "bytes" },
+        { "internalType": "uint256", "name": "amountOut", "type": "uint256" }
+      ],
+      "name": "quoteExactOutput",
+      "outputs": [
+        { "internalType": "uint256", "name": "amountIn", "type": "uint256" }
       ],
       "stateMutability": "nonpayable",
       "type": "function"
