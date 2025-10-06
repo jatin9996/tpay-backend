@@ -12,6 +12,7 @@ import config from "../config/env.js";
 import { getUniswapAddresses } from "../config/chains.js";
 import { validateToken } from "../services/tokenValidation.js";
 import { OPERATIONAL_LIMITS } from "../config/operationalLimits.js";
+import axios from "axios";
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -291,6 +292,60 @@ router.post("/remove-liquidity", ensureBlockchainInitialized, async (req, res) =
         res.json({ success: true, txHash: tx1.hash, collectTxHash });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET USER POSITIONS (read-only via The Graph)
+ * Returns basic LP positions for a wallet on Uniswap V3
+ * Query: owner, chainId(optional)
+ */
+router.get("/positions", async (req, res) => {
+    try {
+        const { owner, chainId } = req.query;
+        if (!owner) return res.status(400).json({ success: false, error: "owner is required" });
+
+        // Currently we target the canonical Uniswap V3 subgraph on main chains
+        // For testnets, data may be sparse. Frontend should handle empty results.
+        const GRAPH_URL = "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3";
+
+        const query = `{
+          positions(where: { owner: "${owner.toLowerCase()}" }, first: 50, orderBy: liquidity, orderDirection: desc) {
+            id
+            liquidity
+            depositedToken0
+            depositedToken1
+            collectedFeesToken0
+            collectedFeesToken1
+            token0 { id symbol decimals }
+            token1 { id symbol decimals }
+            pool { id feeTier }
+          }
+        }`;
+
+        const result = await axios.post(GRAPH_URL, { query });
+        const positions = result.data?.data?.positions || [];
+
+        const formatted = positions.map(p => ({
+            id: p.id,
+            poolId: p.pool?.id,
+            feeTier: p.pool?.feeTier,
+            token0: p.token0,
+            token1: p.token1,
+            liquidity: p.liquidity,
+            deposited: {
+                token0: p.depositedToken0,
+                token1: p.depositedToken1
+            },
+            collectedFees: {
+                token0: p.collectedFeesToken0,
+                token1: p.collectedFeesToken1
+            }
+        }));
+
+        res.json({ success: true, owner, chainId: chainId ? Number(chainId) : undefined, positions: formatted });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
