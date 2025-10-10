@@ -204,7 +204,7 @@ class SearchService {
         try {
             const [defaultTokens, defaultPools] = await Promise.all([
                 Token.findAll({ 
-                    where: { isEssential: true, isActive: true },
+                    where: { listed: true, blacklisted: false },
                     limit: 5,
                     order: [['symbol', 'ASC']]
                 }),

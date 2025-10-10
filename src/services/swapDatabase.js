@@ -5,6 +5,8 @@ import Approval from '../models/Approval.js';
 import TxPopulation from '../models/TxPopulation.js';
 import RiskPolicy from '../models/RiskPolicy.js';
 import FeatureFlag from '../models/FeatureFlag.js';
+import Token from '../models/Token.js';
+import Quote from '../models/Quote.js';
 import { Op } from 'sequelize';
 
 /**
@@ -359,7 +361,7 @@ class SwapDatabaseService {
             const tokens = await Token.findAll({
                 where: { 
                     chainId: parseInt(chainId),
-                    isActive: true,
+                    listed: true,
                     blacklisted: false
                 },
                 order: [['volume24h', 'DESC']]

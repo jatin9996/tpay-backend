@@ -1,12 +1,13 @@
 import { ethers } from "ethers";
 import config from "../config/env.js";
+import Token from "../models/Token.js";
 
 // Essential test tokens - pre-whitelisted for testing
 const essentialTokenAddresses = [
     config.WETH_ADDRESS,
     config.USDC_ADDRESS,
     config.USDT_ADDRESS
-];
+].filter(addr => typeof addr === 'string' && addr.trim() !== '');
 
 // Dynamic token registry for permissionless listings
 let dynamicTokenRegistry = new Set();

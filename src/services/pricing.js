@@ -33,7 +33,7 @@ export async function formatTokenMeta(address) {
     const token = await Token.findOne({ 
         where: { 
             address: address.toLowerCase(), 
-            isActive: true 
+            listed: true 
         } 
     });
     

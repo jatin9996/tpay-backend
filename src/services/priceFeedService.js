@@ -20,13 +20,15 @@ class PriceFeedService {
         return {
             // Ethereum mainnet Chainlink feeds
             '1': {
-                '0xA0b86a33E6441b8c4C8C0': '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419', // ETH/USD
-                '0xA0b86a33E6441b8c4C8C1': '0x8A753747A1Fa494EC906cE90E9f37563A8AF630e', // LINK/USD
-                '0xA0b86a33E6441b8c4C8C2': '0x2c1d072e956AFFC0D435Cb7AC38EF18d24d9127c'  // LINK/USD
+                // ETH/USD feed
+                [config.WETH_ADDRESS?.toLowerCase() || '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee']:
+                    '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419'
             },
-            // Sepolia testnet (placeholder addresses)
+            // Sepolia testnet
             '11155111': {
-                '0xA0b86a33E6441b8c4C8C0': '0x694AA1769357215DE4FAC081bf1f309aDC325306' // ETH/USD
+                // ETH/USD feed on Sepolia
+                [config.WETH_ADDRESS?.toLowerCase() || '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee']:
+                    '0x694AA1769357215DE4FAC081bf1f309aDC325306'
             }
         };
     }
@@ -80,11 +82,12 @@ class PriceFeedService {
      */
     async getChainlinkPrice(tokenAddress, chainId) {
         const feeds = this.chainlinkFeeds[chainId];
-        if (!feeds || !feeds[tokenAddress]) {
+        const key = tokenAddress.toLowerCase();
+        if (!feeds || !feeds[key]) {
             throw new Error('No Chainlink feed available');
         }
 
-        const feedAddress = feeds[tokenAddress];
+        const feedAddress = feeds[key];
         const provider = new ethers.JsonRpcProvider(config.RPC_URL);
         
         const aggregatorABI = [
@@ -214,9 +217,9 @@ class PriceFeedService {
      */
     async updateTokenPrices(chainId = '1') {
         try {
-            const tokens = await Token.findAll({
-                where: { chainId: parseInt(chainId), isActive: true }
-            });
+        const tokens = await Token.findAll({
+            where: { chainId: parseInt(chainId), listed: true }
+        });
 
             const updatePromises = tokens.map(async (token) => {
                 try {
