@@ -12,7 +12,7 @@ const chainsData = [
         name: 'Sepolia',
         chainId: 11155111,
         rpcUrl: config.RPC_URL || 'https://sepolia.infura.io/v3/your-project-id',
-        routerAddress: '0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E', // Uniswap V3 Router
+        routerAddress: '0xE592427A0AEce92De3Edee1F18E0157C05861564', // Uniswap V3 Router
         quoterAddress: '0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6', // Uniswap V3 Quoter
         nativeWrappedAddress: config.WETH_ADDRESS || '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9',
         isActive: true,
@@ -35,7 +35,7 @@ const chainsData = [
 // Seed data for tokens
 const tokensData = [
     {
-        address: config.WETH_ADDRESS || '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9',
+        address: (config.WETH_ADDRESS || '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9').toLowerCase(),
         chainId: 11155111,
         symbol: 'WETH',
         name: 'Wrapped Ether',
@@ -50,7 +50,7 @@ const tokensData = [
         blacklisted: false
     },
     {
-        address: config.USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+        address: (config.USDC_ADDRESS || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238').toLowerCase(),
         chainId: 11155111,
         symbol: 'USDC',
         name: 'USD Coin',
@@ -65,7 +65,7 @@ const tokensData = [
         blacklisted: false
     },
     {
-        address: config.USDT_ADDRESS || '0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0',
+        address: (config.USDT_ADDRESS || '0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0').toLowerCase(),
         chainId: 11155111,
         symbol: 'USDT',
         name: 'Tether USD',

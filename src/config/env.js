@@ -27,7 +27,10 @@ const optionalEnvVars = {
     WMATIC_ADDRESS: process.env.WMATIC_ADDRESS,
     // Chain-specific configuration - Default to Ethereum testnet (Sepolia)
     DEFAULT_CHAIN_ID: process.env.DEFAULT_CHAIN_ID || "11155111", // Default to Sepolia
-    FORCE_CHAIN_ID: process.env.FORCE_CHAIN_ID // Force specific chain ID (optional)
+    FORCE_CHAIN_ID: process.env.FORCE_CHAIN_ID, // Force specific chain ID (optional)
+    // External price feeds
+    COINGECKO_API_KEY: process.env.COINGECKO_API_KEY,
+    WETH_USD_FALLBACK: process.env.WETH_USD_FALLBACK || 2000
 };
 
 // Validate required environment variables

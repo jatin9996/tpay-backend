@@ -80,7 +80,7 @@ class QuoteService {
         try {
             // First try to get from database
             const dbToken = await Token.findOne({
-                where: { address: token.toLowerCase(), isActive: true }
+                where: { address: token.toLowerCase(), listed: true }
             });
             
             if (dbToken) {
