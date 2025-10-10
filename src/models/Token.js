@@ -35,6 +35,10 @@ const Token = sequelize.define('Token', {
         type: DataTypes.JSONB,
         defaultValue: {}
     },
+    logoURI: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     marketCap: {
         type: DataTypes.DECIMAL(30, 2),
         defaultValue: 0

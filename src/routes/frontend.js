@@ -5,6 +5,7 @@ import quoteService from "../services/quoteService.js";
 import priceFeedService from "../services/priceFeedService.js";
 import securityService from "../services/securityService.js";
 import swapDatabaseService from "../services/swapDatabase.js";
+import { getDefaultTokens } from "../services/tokenRegistry.js";
 import { validateToken } from "../services/tokenValidation.js";
 import { serializeBigInts } from "../utils/bigIntSerializer.js";
 import { ethers } from "ethers";
@@ -27,7 +28,28 @@ router.get("/tokens", rateLimiter, async (req, res) => {
         const { chainId = config.DEFAULT_CHAIN_ID } = req.query;
         
         // Get tokens from database
-        const tokens = await swapDatabaseService.getSupportedTokens(chainId);
+        let tokens = await swapDatabaseService.getSupportedTokens(chainId);
+
+        // If DB has very few tokens, enrich with curated defaults (without duplicates)
+        const curated = getDefaultTokens(chainId);
+        if (curated.length) {
+            const has = new Set(tokens.map(t => t.address.toLowerCase()));
+            const enriched = curated
+              .filter(ct => !has.has(ct.address.toLowerCase()))
+              .map(ct => ({
+                ...ct,
+                address: ct.address.toLowerCase(),
+                chainId: parseInt(chainId),
+                name: ct.name,
+                symbol: ct.symbol,
+                decimals: ct.decimals,
+                logoURI: undefined,
+                isStablecoin: ['USDC','USDT','DAI'].includes(ct.symbol),
+                verified: true,
+                volume24h: 0
+              }));
+            tokens = [...tokens, ...enriched];
+        }
         
         // Get prices for all tokens
         const tokenAddresses = tokens.map(token => token.address);
