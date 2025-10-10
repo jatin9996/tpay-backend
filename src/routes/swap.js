@@ -429,7 +429,7 @@ router.post("/swap", async (req, res) => {
         if (!tokenIn || !tokenOut || !recipient || !fee || (!slippageTolerance && slippagePct === undefined) || !ttl) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: tokenIn, tokenOut, recipient, fee, slippageTolerance, ttl'
+                error: 'Missing required fields: tokenIn, tokenOut, recipient, fee, slippageTolerance or slippagePct, ttl'
             });
         }
 
@@ -1026,7 +1026,7 @@ router.post("/swap/populate", async (req, res) => {
         if (!tokenIn || !tokenOut || !recipient || !fee || (!slippageTolerance && slippagePct === undefined) || !ttl) {
             return res.status(400).json({
                 success: false,
-                error: 'Missing required fields: tokenIn, tokenOut, recipient, fee, slippageTolerance, ttl'
+                error: 'Missing required fields: tokenIn, tokenOut, recipient, fee, slippageTolerance or slippagePct, ttl'
             });
         }
 

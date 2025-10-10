@@ -109,19 +109,26 @@ class SecurityService {
                 };
             }
 
-            // Calculate expected output based on current prices
-            const inputValue = Number(amountIn) * currentPriceIn;
-            const expectedOutput = inputValue / currentPriceOut;
+            // Calculate a fair output based on current USD prices
+            const inputValueUsd = Number(amountIn) * currentPriceIn;
+            const fairAmountOut = inputValueUsd / currentPriceOut; // in tokenOut units (human)
 
-            // This would need actual pool data for accurate MEV detection
-            // For now, implement basic checks
-            const priceDeviation = Math.abs(currentPriceIn - currentPriceOut) / Math.max(currentPriceIn, currentPriceOut);
-            
-            if (priceDeviation > this.maxPriceDeviation) {
-                return {
-                    valid: false,
-                    error: 'High price deviation detected - possible MEV attack'
-                };
+            // Compare the fair output to client-provided expectations if available
+            const { quotedAmountOut, amountOutMinimum, slippageTolerance } = swapParams;
+
+            // Prefer comparing against an explicit quote amount if provided
+            const referenceOut = quotedAmountOut ? Number(quotedAmountOut) : (amountOutMinimum ? Number(amountOutMinimum) : null);
+
+            if (referenceOut && isFinite(referenceOut) && fairAmountOut > 0) {
+                const deviation = Math.abs(fairAmountOut - referenceOut) / fairAmountOut;
+                const maxAllowedDeviation = this.maxPriceDeviation;
+
+                if (deviation > maxAllowedDeviation) {
+                    return {
+                        valid: false,
+                        error: 'Quoted output deviates significantly from fair price - possible MEV'
+                    };
+                }
             }
 
             return { valid: true };
