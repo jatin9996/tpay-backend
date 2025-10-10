@@ -1,0 +1,357 @@
+{
+  "info": {
+    "_postman_id": "tpay-all-swap-apis",
+    "name": "TPay - Complete Swap & Supporting APIs",
+    "description": "Unified collection to test TPay swap (custodial & non-custodial), quote, frontend, analytics, search, risk, feature flags, database, and health endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "🌐 Basic / DEX",
+      "item": [
+        {
+          "name": "Get Chain Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/dex/chain-info", "host": ["{{base_url}}"], "path": ["dex", "chain-info"] }
+          }
+        },
+        {
+          "name": "Get Supported Tokens",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/dex/tokens", "host": ["{{base_url}}"], "path": ["dex", "tokens"] }
+          }
+        },
+        {
+          "name": "Get Token Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dex/balance/{{token_address}}/{{user_address}}",
+              "host": ["{{base_url}}"],
+              "path": ["dex", "balance", "{{token_address}}", "{{user_address}}"],
+              "variable": [
+                { "key": "token_address", "value": "{{weth_address}}" },
+                { "key": "user_address", "value": "{{user_address}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Operational Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/dex/operational-status", "host": ["{{base_url}}"], "path": ["dex", "operational-status"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Quote System",
+      "item": [
+        {
+          "name": "POST /quote - Exact In",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"0.01\",\n  \"fee\": 3000\n}"
+            },
+            "url": { "raw": "{{base_url}}/quote", "host": ["{{base_url}}"], "path": ["quote"] }
+          }
+        },
+        {
+          "name": "POST /quote/exact-out - Exact Out",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountOut\": \"100\",\n  \"fee\": 3000\n}"
+            },
+            "url": { "raw": "{{base_url}}/quote/exact-out", "host": ["{{base_url}}"], "path": ["quote", "exact-out"] }
+          }
+        },
+        {
+          "name": "POST /quote/best - Legacy",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"0.5\",\n  \"slippagePct\": 1.0\n}"
+            },
+            "url": { "raw": "{{base_url}}/quote/best", "host": ["{{base_url}}"], "path": ["quote", "best"] }
+          }
+        },
+        {
+          "name": "GET /quote/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/quote/{{quote_id}}", "host": ["{{base_url}}"], "path": ["quote", "{{quote_id}}"] }
+          }
+        },
+        {
+          "name": "GET /quote/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/quote/stats", "host": ["{{base_url}}"], "path": ["quote", "stats"] }
+          }
+        },
+        {
+          "name": "GET /quote/requests/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/quote/requests/stats", "host": ["{{base_url}}"], "path": ["quote", "requests", "stats"] }
+          }
+        },
+        {
+          "name": "GET /quote/cache/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/quote/cache/stats", "host": ["{{base_url}}"], "path": ["quote", "cache", "stats"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "⚡ Swap - Custodial",
+      "item": [
+        {
+          "name": "POST /swap - Exact In",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"0.001\",\n  \"recipient\": \"{{user_address}}\",\n  \"fee\": 3000,\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 3600,\n  \"mode\": \"EXACT_IN\",\n  \"userAddress\": \"{{user_address}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/swap", "host": ["{{base_url}}"], "path": ["swap"] }
+          }
+        },
+        {
+          "name": "POST /swap/exact-out - Exact Out",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountOut\": \"100\",\n  \"amountInMaximum\": \"0.1\",\n  \"recipient\": \"{{user_address}}\",\n  \"fee\": 3000,\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 3600,\n  \"userAddress\": \"{{user_address}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/swap/exact-out", "host": ["{{base_url}}"], "path": ["swap", "exact-out"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔄 Swap - Non-Custodial",
+      "item": [
+        {
+          "name": "POST /swap/populate - Exact In",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"0.01\",\n  \"recipient\": \"{{user_address}}\",\n  \"slippageTolerance\": 0.5,\n  \"fee\": 3000,\n  \"ttlSec\": 600\n}"
+            },
+            "url": { "raw": "{{base_url}}/swap/populate", "host": ["{{base_url}}"], "path": ["swap", "populate"] }
+          }
+        },
+        {
+          "name": "POST /swap/populate/exact-out - Exact Out",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountOut\": \"100\",\n  \"amountInMaximum\": \"0.1\",\n  \"recipient\": \"{{user_address}}\",\n  \"slippageTolerance\": 0.5,\n  \"fee\": 3000,\n  \"ttlSec\": 600\n}"
+            },
+            "url": { "raw": "{{base_url}}/swap/populate/exact-out", "host": ["{{base_url}}"], "path": ["swap", "populate", "exact-out"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🖥️ Frontend-Optimized",
+      "item": [
+        {
+          "name": "GET /frontend/tokens",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/frontend/tokens?chainId=11155111", "host": ["{{base_url}}"], "path": ["frontend", "tokens"], "query": [{"key":"chainId","value":"11155111"}] } }
+        },
+        {
+          "name": "GET /frontend/token/:address",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/frontend/token/{{weth_address}}", "host": ["{{base_url}}"], "path": ["frontend", "token", "{{weth_address}}"] } }
+        },
+        {
+          "name": "POST /frontend/quote",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"1.0\",\n  \"slippagePct\": 0.5,\n  \"chainId\": \"11155111\",\n  \"userAddress\": \"{{user_address}}\"\n}" },
+            "url": { "raw": "{{base_url}}/frontend/quote", "host": ["{{base_url}}"], "path": ["frontend", "quote"] }
+          }
+        },
+        {
+          "name": "POST /frontend/swap/validate",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"1.0\",\n  \"slippageTolerance\": 0.5,\n  \"userAddress\": \"{{user_address}}\"\n}" },
+            "url": { "raw": "{{base_url}}/frontend/swap/validate", "host": ["{{base_url}}"], "path": ["frontend", "swap", "validate"] }
+          }
+        },
+        {
+          "name": "POST /frontend/swap/execute",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"tokenIn\": \"{{weth_address}}\",\n  \"tokenOut\": \"{{usdc_address}}\",\n  \"amountIn\": \"1.0\",\n  \"recipient\": \"{{user_address}}\",\n  \"slippageTolerance\": 0.5,\n  \"ttl\": 600,\n  \"userAddress\": \"{{user_address}}\",\n  \"clientRequestId\": \"{{$guid}}\"\n}" },
+            "url": { "raw": "{{base_url}}/frontend/swap/execute", "host": ["{{base_url}}"], "path": ["frontend", "swap", "execute"] }
+          }
+        },
+        {
+          "name": "GET /frontend/swap/:swapId",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/frontend/swap/{{swap_id}}", "host": ["{{base_url}}"], "path": ["frontend", "swap", "{{swap_id}}"] } }
+        },
+        {
+          "name": "GET /frontend/user/:address/swaps",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/frontend/user/{{user_address}}/swaps?limit=20&offset=0", "host": ["{{base_url}}"], "path": ["frontend", "user", "{{user_address}}", "swaps"], "query": [{"key":"limit","value":"20"},{"key":"offset","value":"0"}] } }
+        },
+        {
+          "name": "GET /frontend/stats",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/frontend/stats?chainId=11155111&timeRange=24h", "host": ["{{base_url}}"], "path": ["frontend", "stats"], "query": [{"key":"chainId","value":"11155111"},{"key":"timeRange","value":"24h"}] } }
+        },
+        {
+          "name": "GET /frontend/health",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/frontend/health", "host": ["{{base_url}}"], "path": ["frontend", "health"] } }
+        }
+      ]
+    },
+    {
+      "name": "📊 Analytics & Metrics",
+      "item": [
+        {
+          "name": "GET /swap/stats",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/swap/stats?chainId=11155111&timeRange=24h", "host": ["{{base_url}}"], "path": ["swap", "stats"], "query": [{"key":"chainId","value":"11155111"},{"key":"timeRange","value":"24h"}] } }
+        },
+        {
+          "name": "GET /metrics/protocol",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/metrics/protocol?date={{date}}", "host": ["{{base_url}}"], "path": ["metrics", "protocol"], "query": [{"key":"date","value":"{{date}}"}] } }
+        },
+        {
+          "name": "GET /metrics/pool/:poolId/daily",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/metrics/pool/{{pool_id}}/daily?date={{date}}", "host": ["{{base_url}}"], "path": ["metrics", "pool", "{{pool_id}}", "daily"], "query": [{"key":"date","value":"{{date}}"}] } }
+        }
+      ]
+    },
+    {
+      "name": "🔎 Search",
+      "item": [
+        {
+          "name": "GET /search",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/search?q=WETH&limit=5", "host": ["{{base_url}}"], "path": ["search"], "query": [{"key":"q","value":"WETH"},{"key":"limit","value":"5"}] } }
+        },
+        {
+          "name": "GET /search/tokens",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/search/tokens?q=USD&limit=10", "host": ["{{base_url}}"], "path": ["search", "tokens"], "query": [{"key":"q","value":"USD"},{"key":"limit","value":"10"}] } }
+        },
+        {
+          "name": "GET /search/pools",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/search/pools?q=WETH&limit=5", "host": ["{{base_url}}"], "path": ["search", "pools"], "query": [{"key":"q","value":"WETH"},{"key":"limit","value":"5"}] } }
+        }
+      ]
+    },
+    {
+      "name": "🛡️ Risk & Feature Flags",
+      "item": [
+        {
+          "name": "GET /risk/policy/:chainId",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/risk/policy/{{chain_id}}", "host": ["{{base_url}}"], "path": ["risk", "policy", "{{chain_id}}"] } }
+        },
+        {
+          "name": "PUT /risk/policy/:chainId",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"maxSlippageBps\": 3000,\n  \"maxTtlSec\": 7200,\n  \"allowedFees\": [500, 3000, 10000],\n  \"paused\": false,\n  \"maxAmountIn\": \"1000000000000000000000\",\n  \"dailySwapLimit\": \"10000000000000000000000\"\n}" },
+            "url": { "raw": "{{base_url}}/risk/policy/{{chain_id}}", "host": ["{{base_url}}"], "path": ["risk", "policy", "{{chain_id}}"] }
+          }
+        },
+        {
+          "name": "GET /feature-flag/:flagKey",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/feature-flag/{{flag_key}}", "host": ["{{base_url}}"], "path": ["feature-flag", "{{flag_key}}"] } }
+        },
+        {
+          "name": "PUT /feature-flag/:flagKey",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"value\": {\n    \"enabled\": true,\n    \"reason\": \"Feature enabled for testing\"\n  },\n  \"description\": \"Updated description\",\n  \"isActive\": true\n}" },
+            "url": { "raw": "{{base_url}}/feature-flag/{{flag_key}}", "host": ["{{base_url}}"], "path": ["feature-flag", "{{flag_key}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🗄️ Database",
+      "item": [
+        {
+          "name": "POST /db/init",
+          "request": { "method": "POST", "header": [], "url": { "raw": "{{base_url}}/db/init", "host": ["{{base_url}}"], "path": ["db", "init"] } }
+        },
+        {
+          "name": "POST /db/seed",
+          "request": { "method": "POST", "header": [], "url": { "raw": "{{base_url}}/db/seed", "host": ["{{base_url}}"], "path": ["db", "seed"] } }
+        }
+      ]
+    },
+    {
+      "name": "🩺 Health",
+      "item": [
+        { "name": "GET /health", "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/health", "host": ["{{base_url}}"], "path": ["health"] } } },
+        { "name": "GET /health/database", "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/health/database", "host": ["{{base_url}}"], "path": ["health", "database"] } } },
+        { "name": "GET /health/blockchain", "request": { "method": "GET", "header": [], "url": { "raw": "{{base_url}}/health/blockchain", "host": ["{{base_url}}"], "path": ["health", "blockchain"] } } }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('base_url')) { pm.environment.set('base_url', 'http://localhost:3001'); }",
+          "if (!pm.environment.get('weth_address')) { pm.environment.set('weth_address', '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9'); }",
+          "if (!pm.environment.get('usdc_address')) { pm.environment.set('usdc_address', '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238'); }",
+          "if (!pm.environment.get('user_address')) { pm.environment.set('user_address', '0x742d35Cc6634C0532925a3b8D4C9Db96C4b4d8b6'); }",
+          "if (!pm.environment.get('chain_id')) { pm.environment.set('chain_id', '11155111'); }",
+          "if (!pm.environment.get('flag_key')) { pm.environment.set('flag_key', 'SWAP_ENABLED'); }",
+          "const today = new Date().toISOString().split('T')[0]; pm.environment.set('date', today);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3001", "type": "string" },
+    { "key": "weth_address", "value": "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9", "type": "string" },
+    { "key": "usdc_address", "value": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", "type": "string" },
+    { "key": "user_address", "value": "0x742d35Cc6634C0532925a3b8D4C9Db96C4b4d8b6", "type": "string" },
+    { "key": "chain_id", "value": "11155111", "type": "string" },
+    { "key": "quote_id", "value": "", "type": "string" },
+    { "key": "swap_id", "value": "", "type": "string" },
+    { "key": "pool_id", "value": "", "type": "string" },
+    { "key": "flag_key", "value": "SWAP_ENABLED", "type": "string" },
+    { "key": "date", "value": "", "type": "string" }
+  ]
+}

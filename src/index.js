@@ -8,9 +8,10 @@ import liquidityRoutes from "./routes/liquidity.js";
 import poolRoutes from "./routes/pools.js";
 import tokenRoutes from "./routes/tokens.js";
 import searchRoutes from "./routes/search.js";
-import wethApprovalRoutes from "./routes/wethApproval.js";
+import tokenApprovalRoutes from "./routes/tokenApproval.js";
 import quoteRoutes from "./routes/quote.js";
 import tokensTrendingRoutes from "./routes/tokensTrending.js";
+import frontendRoutes from "./routes/frontend.js";
 import { runAggregatorPeriodically } from "./jobs/swaps-24h-aggregate.js";
 
 const app = express();
@@ -27,8 +28,9 @@ app.use("/data", poolRoutes);
 app.use("/tokens", tokenRoutes);
 app.use("/tokens", tokensTrendingRoutes);
 app.use("/search", searchRoutes);
-app.use("/api/weth", wethApprovalRoutes);
+app.use("/api/token", tokenApprovalRoutes);
 app.use("/quote", quoteRoutes);
+app.use("/frontend", frontendRoutes);
 
 app.listen(config.PORT, () => {
     console.log(`Server running on port ${config.PORT}`);

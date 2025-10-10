@@ -11,6 +11,8 @@ import { fileURLToPath } from "url";
 import config from "../config/env.js";
 import { getUniswapAddresses } from "../config/chains.js";
 import { validateToken } from "../services/tokenValidation.js";
+import { OPERATIONAL_LIMITS } from "../config/operationalLimits.js";
+import axios from "axios";
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +25,31 @@ const router = express.Router();
 
 // Initialize Ethereum provider and wallet for blockchain interactions
 let provider, wallet, positionManager;
+
+// Minimal ERC20 ABI for approvals and metadata
+const ERC20_ABI = [
+    "function approve(address spender, uint256 value) external returns (bool)",
+    "function allowance(address owner, address spender) external view returns (uint256)",
+    "function decimals() external view returns (uint8)",
+];
+
+/**
+ * Helpers
+ */
+async function getTokenDecimals(tokenAddress) {
+    const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
+    const decimals = await token.decimals();
+    return Number(decimals);
+}
+
+async function ensureAllowance(tokenAddress, owner, spender, requiredAmount) {
+    const token = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
+    const current = await token.allowance(owner, spender);
+    if (current < requiredAmount) {
+        const tx = await token.approve(spender, requiredAmount);
+        await tx.wait();
+    }
+}
 
 // Async function to initialize blockchain connections
 async function initializeBlockchain() {
@@ -95,26 +122,57 @@ async function ensureBlockchainInitialized(req, res, next) {
  */
 router.post("/add-liquidity", ensureBlockchainInitialized, async (req, res) => {
     try {
-        const { token0, token1, amount0, amount1, recipient } = req.body;
+        const { token0, token1, amount0, amount1, recipient, fee, tickLower, tickUpper, amount0Min, amount1Min, ttlSec } = req.body;
 
         // Validate both token addresses using the token validation service
         const validatedToken0 = validateToken(token0);
         const validatedToken1 = validateToken(token1);
 
+        // Validate fee tier
+        const feeTier = Number(fee ?? 3000);
+        if (!OPERATIONAL_LIMITS.ALLOWED_FEES.includes(feeTier)) {
+            return res.status(400).json({ error: `Invalid fee tier. Allowed: ${OPERATIONAL_LIMITS.ALLOWED_FEES.join(', ')}` });
+        }
+
+        // Ticks (optional, default wide range)
+        const lower = Number.isFinite(Number(tickLower)) ? Number(tickLower) : -60000;
+        const upper = Number.isFinite(Number(tickUpper)) ? Number(tickUpper) : 60000;
+        if (lower >= upper) {
+            return res.status(400).json({ error: "tickLower must be less than tickUpper" });
+        }
+
+        // Deadlines
+        const ttl = Number.isFinite(Number(ttlSec)) ? Number(ttlSec) : OPERATIONAL_LIMITS.DEADLINE_LIMITS.DEFAULT_TTL;
+        const deadline = Math.floor(Date.now() / 1000) + Math.min(Math.max(ttl, OPERATIONAL_LIMITS.DEADLINE_LIMITS.MIN_TTL), OPERATIONAL_LIMITS.DEADLINE_LIMITS.MAX_TTL);
+
+        // Resolve decimals and parse amounts
+        const [dec0, dec1] = await Promise.all([
+            getTokenDecimals(validatedToken0),
+            getTokenDecimals(validatedToken1)
+        ]);
+        const amt0Desired = ethers.parseUnits(String(amount0), dec0);
+        const amt1Desired = ethers.parseUnits(String(amount1), dec1);
+        const amt0Min = amount0Min != null ? ethers.parseUnits(String(amount0Min), dec0) : 0n;
+        const amt1Min = amount1Min != null ? ethers.parseUnits(String(amount1Min), dec1) : 0n;
+
+        // Approvals
+        await ensureAllowance(validatedToken0, wallet.address, positionManager.target, amt0Desired);
+        await ensureAllowance(validatedToken1, wallet.address, positionManager.target, amt1Desired);
+
         // Execute the liquidity provision transaction
         // This creates a new NFT position representing the liquidity
         const tx = await positionManager.mint({
-            token0: validatedToken0,           // First token in the pair
-            token1: validatedToken1,           // Second token in the pair
-            fee: 3000,                         // 0.3% fee tier (standard for most pairs)
-            tickLower: -60000,                 // Lower tick boundary for price range
-            tickUpper: 60000,                  // Upper tick boundary for price range
-            amount0Desired: ethers.parseUnits(amount0, 18),  // Desired amount of token0
-            amount1Desired: ethers.parseUnits(amount1, 18),  // Desired amount of token1
-            amount0Min: 0,                     // Minimum amount of token0 to accept
-            amount1Min: 0,                     // Minimum amount of token1 to accept
-            recipient,                         // Address receiving the position NFT
-            deadline: Math.floor(Date.now() / 1000) + 60 * 10  // 10 minutes from now
+            token0: validatedToken0,
+            token1: validatedToken1,
+            fee: feeTier,
+            tickLower: lower,
+            tickUpper: upper,
+            amount0Desired: amt0Desired,
+            amount1Desired: amt1Desired,
+            amount0Min: amt0Min,
+            amount1Min: amt1Min,
+            recipient,
+            deadline
         });
 
         // Wait for transaction confirmation on the blockchain
@@ -125,6 +183,169 @@ router.post("/add-liquidity", ensureBlockchainInitialized, async (req, res) => {
     } catch (err) {
         // Handle any errors during liquidity provision
         res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * INCREASE LIQUIDITY ENDPOINT
+ */
+router.post("/increase-liquidity", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenId, token0, token1, amount0, amount1, amount0Min, amount1Min, ttlSec } = req.body;
+        if (!tokenId) return res.status(400).json({ error: "tokenId is required" });
+
+        const validatedToken0 = validateToken(token0);
+        const validatedToken1 = validateToken(token1);
+
+        const ttl = Number.isFinite(Number(ttlSec)) ? Number(ttlSec) : OPERATIONAL_LIMITS.DEADLINE_LIMITS.DEFAULT_TTL;
+        const deadline = Math.floor(Date.now() / 1000) + Math.min(Math.max(ttl, OPERATIONAL_LIMITS.DEADLINE_LIMITS.MIN_TTL), OPERATIONAL_LIMITS.DEADLINE_LIMITS.MAX_TTL);
+
+        const [dec0, dec1] = await Promise.all([
+            getTokenDecimals(validatedToken0),
+            getTokenDecimals(validatedToken1)
+        ]);
+        const amt0Desired = ethers.parseUnits(String(amount0 ?? 0), dec0);
+        const amt1Desired = ethers.parseUnits(String(amount1 ?? 0), dec1);
+        const amt0Min = amount0Min != null ? ethers.parseUnits(String(amount0Min), dec0) : 0n;
+        const amt1Min = amount1Min != null ? ethers.parseUnits(String(amount1Min), dec1) : 0n;
+
+        await ensureAllowance(validatedToken0, wallet.address, positionManager.target, amt0Desired);
+        await ensureAllowance(validatedToken1, wallet.address, positionManager.target, amt1Desired);
+
+        const tx = await positionManager.increaseLiquidity({
+            tokenId: BigInt(tokenId),
+            amount0Desired: amt0Desired,
+            amount1Desired: amt1Desired,
+            amount0Min: amt0Min,
+            amount1Min: amt1Min,
+            deadline
+        });
+        await tx.wait();
+        res.json({ success: true, txHash: tx.hash });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * COLLECT FEES ENDPOINT
+ */
+router.post("/collect", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenId, recipient } = req.body;
+        if (!tokenId) return res.status(400).json({ error: "tokenId is required" });
+
+        // Max uint128 for collect
+        const MAX_UINT128 = (1n << 128n) - 1n;
+        const tx = await positionManager.collect({
+            tokenId: BigInt(tokenId),
+            recipient: recipient || wallet.address,
+            amount0Max: MAX_UINT128,
+            amount1Max: MAX_UINT128
+        });
+        await tx.wait();
+        res.json({ success: true, txHash: tx.hash });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * REMOVE LIQUIDITY ENDPOINT (decrease + optional collect and burn)
+ */
+router.post("/remove-liquidity", ensureBlockchainInitialized, async (req, res) => {
+    try {
+        const { tokenId, liquidity, amount0Min, amount1Min, ttlSec, collect = true, burn = false, recipient } = req.body;
+        if (!tokenId) return res.status(400).json({ error: "tokenId is required" });
+        if (liquidity == null) return res.status(400).json({ error: "liquidity is required" });
+
+        const ttl = Number.isFinite(Number(ttlSec)) ? Number(ttlSec) : OPERATIONAL_LIMITS.DEADLINE_LIMITS.DEFAULT_TTL;
+        const deadline = Math.floor(Date.now() / 1000) + Math.min(Math.max(ttl, OPERATIONAL_LIMITS.DEADLINE_LIMITS.MIN_TTL), OPERATIONAL_LIMITS.DEADLINE_LIMITS.MAX_TTL);
+
+        const tx1 = await positionManager.decreaseLiquidity({
+            tokenId: BigInt(tokenId),
+            liquidity: BigInt(liquidity),
+            amount0Min: BigInt(amount0Min ?? 0),
+            amount1Min: BigInt(amount1Min ?? 0),
+            deadline
+        });
+        await tx1.wait();
+
+        let collectTxHash = null;
+        if (collect) {
+            const MAX_UINT128 = (1n << 128n) - 1n;
+            const tx2 = await positionManager.collect({
+                tokenId: BigInt(tokenId),
+                recipient: recipient || wallet.address,
+                amount0Max: MAX_UINT128,
+                amount1Max: MAX_UINT128
+            });
+            await tx2.wait();
+            collectTxHash = tx2.hash;
+        }
+
+        if (burn) {
+            const tx3 = await positionManager.burn(BigInt(tokenId));
+            await tx3.wait();
+        }
+
+        res.json({ success: true, txHash: tx1.hash, collectTxHash });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * GET USER POSITIONS (read-only via The Graph)
+ * Returns basic LP positions for a wallet on Uniswap V3
+ * Query: owner, chainId(optional)
+ */
+router.get("/positions", async (req, res) => {
+    try {
+        const { owner, chainId } = req.query;
+        if (!owner) return res.status(400).json({ success: false, error: "owner is required" });
+
+        // Currently we target the canonical Uniswap V3 subgraph on main chains
+        // For testnets, data may be sparse. Frontend should handle empty results.
+        const GRAPH_URL = "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3";
+
+        const query = `{
+          positions(where: { owner: "${owner.toLowerCase()}" }, first: 50, orderBy: liquidity, orderDirection: desc) {
+            id
+            liquidity
+            depositedToken0
+            depositedToken1
+            collectedFeesToken0
+            collectedFeesToken1
+            token0 { id symbol decimals }
+            token1 { id symbol decimals }
+            pool { id feeTier }
+          }
+        }`;
+
+        const result = await axios.post(GRAPH_URL, { query });
+        const positions = result.data?.data?.positions || [];
+
+        const formatted = positions.map(p => ({
+            id: p.id,
+            poolId: p.pool?.id,
+            feeTier: p.pool?.feeTier,
+            token0: p.token0,
+            token1: p.token1,
+            liquidity: p.liquidity,
+            deposited: {
+                token0: p.depositedToken0,
+                token1: p.depositedToken1
+            },
+            collectedFees: {
+                token0: p.collectedFeesToken0,
+                token1: p.collectedFeesToken1
+            }
+        }));
+
+        res.json({ success: true, owner, chainId: chainId ? Number(chainId) : undefined, positions: formatted });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
