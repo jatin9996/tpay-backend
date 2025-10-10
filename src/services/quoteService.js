@@ -370,11 +370,20 @@ class QuoteService {
                 const priceIn = await priceFeedService.getTokenPrice(tIn, chainId);
                 const priceOut = await priceFeedService.getTokenPrice(tOut, chainId);
                 if (priceIn > 0 && priceOut > 0) {
-                    const inputValueUsd = Number(amountIn) * priceIn;
-                    const outAmount = mode === 'EXACT_IN' ? Number(ethers.formatUnits(best.amountOut, decOut)) : Number(ethers.formatUnits(BigInt(amountIn), decOut));
-                    const expectedOutFromUsd = inputValueUsd / priceOut;
-                    const impact = expectedOutFromUsd > 0 ? Math.max(0, ((expectedOutFromUsd - outAmount) / expectedOutFromUsd) * 100) : 0;
-                    priceImpactPct = impact.toFixed(4);
+                    if (mode === 'EXACT_IN') {
+                        const inputAmount = Number(amountIn); // human units
+                        const inputValueUsd = inputAmount * priceIn;
+                        const actualOutAmount = Number(ethers.formatUnits(best.amountOut, decOut));
+                        const expectedOutFromUsd = inputValueUsd / priceOut;
+                        const impact = expectedOutFromUsd > 0 ? Math.max(0, ((expectedOutFromUsd - actualOutAmount) / expectedOutFromUsd) * 100) : 0;
+                        priceImpactPct = impact.toFixed(4);
+                    } else { // EXACT_OUT
+                        const desiredOutAmount = Number(amountIn); // human units (desired output)
+                        const fairInputFromUsd = (desiredOutAmount * priceOut) / priceIn;
+                        const actualInputAmount = Number(ethers.formatUnits(best.amountIn, decIn));
+                        const impact = fairInputFromUsd > 0 ? Math.max(0, ((actualInputAmount - fairInputFromUsd) / fairInputFromUsd) * 100) : 0;
+                        priceImpactPct = impact.toFixed(4);
+                    }
                 }
             } catch {}
             const nowSec = Math.floor(Date.now() / 1000);
