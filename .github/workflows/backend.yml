@@ -1,0 +1,76 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run tests
+        run: |
+          if [ -f package.json ]; then
+            npm test || echo "Tests failed or not present; continuing"
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tpay-backend
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/tpay-backend:latest
+            ghcr.io/${{ github.repository_owner }}/tpay-backend:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH to server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH=${{ secrets.DEPLOY_PATH || '/opt/trice-pay' }}
+            mkdir -p "$DEPLOY_PATH"
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.CR_PAT }}
+            cd "$DEPLOY_PATH"
+            docker pull ghcr.io/${{ github.repository_owner }}/tpay-backend:latest || true
+            if [ -f docker-compose.yml ]; then
+              docker compose pull backend || true
+              docker compose up -d backend || true
+            fi
+

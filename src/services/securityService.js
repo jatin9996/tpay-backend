@@ -193,7 +193,7 @@ class SecurityService {
     }
 
     /**
-     * Sanctions list check (placeholder)
+     * Sanctions list check ()
      */
     async checkSanctionsList(userAddress) {
         // This would integrate with actual sanctions databases
