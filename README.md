@@ -1,10 +1,3 @@
-# TPay Backend - PostgreSQL Migration Complete
-
-This backend has been successfully migrated from MongoDB to PostgreSQL using Sequelize ORM.
-
-## 🗄️ Database: PostgreSQL
-
-The application now uses **PostgreSQL** as the primary database with **Sequelize ORM** for database operations.
 
 ## 🚀 Quick Start
 
@@ -20,28 +13,6 @@ The application now uses **PostgreSQL** as the primary database with **Sequelize
 npm install
 ```
 
-### 2. Database Setup
-
-#### Option A: Using Environment Variables
-
-Create a `.env` file based on `env.template`:
-
-```bash
-# PostgreSQL Configuration
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=tpay
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=your_password_here
-
-# Alternative: Use full connection string
-# POSTGRES_URI=postgresql://username:password@host:port/database
-
-# Ethereum Configuration
-RPC_URL=https://sepolia.infura.io/v3/YOUR_API_KEY
-PRIVATE_KEY=your_64_character_private_key_here_without_0x_prefix
-DEFAULT_CHAIN_ID=11155111
-```
 
 #### Option B: Using Connection String
 
