@@ -64,7 +64,10 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             set -e
-            DEPLOY_PATH=${{ secrets.DEPLOY_PATH || '/opt/trice-pay' }}
+            DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}
+            if [ -z "$DEPLOY_PATH" ]; then
+              DEPLOY_PATH="/opt/trice-pay"
+            fi
             mkdir -p "$DEPLOY_PATH"
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.CR_PAT }}
             cd "$DEPLOY_PATH"
