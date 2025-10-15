@@ -6,12 +6,36 @@ import Token from "../models/Token.js";
 const essentialTokenAddresses = [
     config.WETH_ADDRESS,
     config.USDC_ADDRESS,
-    config.USDT_ADDRESS
+    config.USDT_ADDRESS,
+    // Optionally include wrapped native on certain testnets if provided
+    config.WMATIC_ADDRESS
 ].filter(addr => typeof addr === 'string' && addr.trim() !== '');
 
 // Dynamic token registry for permissionless listings
 let dynamicTokenRegistry = new Set();
 let validatedTokens = null;
+
+// Preload additional allowed tokens from environment (comma-separated addresses)
+function preloadEnvAllowedTokens() {
+    try {
+        const envList = process.env.ALLOWED_TOKENS;
+        if (!envList) return;
+        for (const raw of envList.split(',')) {
+            const candidate = (raw || '').trim();
+            if (!candidate) continue;
+            try {
+                const formatted = ethers.getAddress(candidate);
+                dynamicTokenRegistry.add(formatted);
+            } catch (e) {
+                console.warn(`Invalid address in ALLOWED_TOKENS: ${candidate}`, e.message);
+            }
+        }
+        validatedTokens = null; // force rebuild
+    } catch {}
+}
+
+// Initialize env-based tokens once at module load
+preloadEnvAllowedTokens();
 
 /**
  * Adds a new token to the dynamic registry (permissionless listing)

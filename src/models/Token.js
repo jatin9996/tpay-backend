@@ -37,7 +37,8 @@ const Token = sequelize.define('Token', {
     },
     logoURI: {
         type: DataTypes.STRING,
-        allowNull: true
+        allowNull: true,
+        field: 'logo_uri'
     },
     marketCap: {
         type: DataTypes.DECIMAL(30, 2),
