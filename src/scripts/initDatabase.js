@@ -12,6 +12,7 @@ import MetricsPoolDay from '../models/MetricsPoolDay.js';
 import ServiceHealth from '../models/ServiceHealth.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import QuoteCache from '../models/QuoteCache.js';
+import Notification from '../models/Notification.js';
 
 // Define model associations
 const setupAssociations = () => {
@@ -138,6 +139,7 @@ const initDatabase = async () => {
         console.log('- service_health');
         console.log('- quote_requests');
         console.log('- quote_cache');
+        console.log('- notifications');
         
         process.exit(0);
     } catch (error) {
