@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "nodemon src/index.js",
+    "start:prod": "node src/index.js",
+    "build": "echo 'no build step for backend'",
     "db:init": "node src/scripts/initDatabase.js",
     "db:seed": "node src/scripts/seedDatabase.js",
     "db:reset": "npm run db:init && npm run db:seed",

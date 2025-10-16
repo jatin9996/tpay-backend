@@ -61,4 +61,4 @@ jobs:
             docker pull ghcr.io/jatin9996/tpay-backend:latest
             docker stop tpay-backend || true
             docker rm tpay-backend || true
-            docker run -d --name tpay-backend -p 4000:4000 ghcr.io/jatin9996/tpay-backend:latest
+            docker run -d --name tpay-backend -p 4000:3001 ghcr.io/jatin9996/tpay-backend:latest
