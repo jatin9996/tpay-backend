@@ -7,13 +7,10 @@ const MetricsPoolDay = sequelize.define('MetricsPoolDay', {
         primaryKey: true,
         defaultValue: DataTypes.UUIDV4
     },
+    // Use pool address string as key to avoid FK type mismatches across environments
     poolId: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: {
-            model: 'pools',
-            key: 'id'
-        }
+        type: DataTypes.STRING,
+        allowNull: false
     },
     date: {
         type: DataTypes.DATEONLY,

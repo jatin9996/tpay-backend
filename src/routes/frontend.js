@@ -10,6 +10,9 @@ import { validateToken } from "../services/tokenValidation.js";
 import { serializeBigInts } from "../utils/bigIntSerializer.js";
 import { ethers } from "ethers";
 import config from "../config/env.js";
+import Pool from "../models/Pool.js";
+import MetricsPoolDay from "../models/MetricsPoolDay.js";
+import { Op } from "sequelize";
 
 const router = express.Router();
 
@@ -414,7 +417,7 @@ router.get("/stats", rateLimiter, async (req, res) => {
 /**
  * GET /frontend/pools/analytics
  * Returns pool analytics suitable for the Pool Analytics UI
- * Data source: Uniswap V3 The Graph subgraph + our DB fallbacks
+ * Data source: Our platform DB (pools + metrics_pool_day)
  * Query params:
  * - poolAddress (optional): focus on a specific pool
  * - chainId (optional)
@@ -428,66 +431,44 @@ router.get("/pools/analytics", rateLimiter, async (req, res) => {
         const rangeToDays = { '1d': 1, '7d': 7, '30d': 30, '1y': 365 };
         const days = rangeToDays[range] ?? 7;
 
-        // Subgraph endpoint
-        const GRAPH_URL = "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3";
-
-        // Build GraphQL queries
-        const dayDataQuery = (poolId) => `{
-          pool(id: "${poolId?.toLowerCase()}") {
-            id
-            totalValueLockedUSD
-            volumeUSD
-            feesUSD
-            token0 { symbol id }
-            token1 { symbol id }
-            poolDayData(first: ${days}, orderBy: date, orderDirection: desc) {
-              date
-              volumeUSD
-              tvlUSD
-              feesUSD
-            }
-          }
-        }`;
-
-        const topPoolsQuery = `{
-          pools(first: 1, orderBy: totalValueLockedUSD, orderDirection: desc) {
-            id
-            totalValueLockedUSD
-            volumeUSD
-            feesUSD
-            token0 { symbol id }
-            token1 { symbol id }
-            poolDayData(first: ${days}, orderBy: date, orderDirection: desc) {
-              date
-              volumeUSD
-              tvlUSD
-              feesUSD
-            }
-          }
-        }`;
-
-        // Fetch from subgraph
-        const gql = poolAddress ? dayDataQuery(poolAddress) : topPoolsQuery;
-        const resp = await axios.post(GRAPH_URL, { query: gql });
-        const pool = poolAddress ? resp.data?.data?.pool : resp.data?.data?.pools?.[0];
-
-        if (!pool) {
-            return res.status(404).json({ success: false, error: "Pool not found in subgraph" });
+        // 1) Find pool in our DB
+        let pool;
+        if (poolAddress) {
+            pool = await Pool.findOne({
+                where: { poolAddress: poolAddress.toLowerCase(), chainId: parseInt(chainId) }
+            });
+        } else {
+            pool = await Pool.findOne({
+                where: { chainId: parseInt(chainId), isActive: true },
+                order: [["tvl", "DESC"]]
+            });
         }
 
-        // Shape response for frontend UI
-        const daySeries = (pool.poolDayData || []).map(d => ({
-            date: new Date(d.date * 1000).toISOString(),
-            volumeUsd: Number(d.volumeUSD || 0),
-            tvlUsd: Number(d.tvlUSD || 0),
-            feesUsd: Number(d.feesUSD || 0)
-        })).reverse();
+        if (!pool) {
+            return res.status(404).json({ success: false, error: "No pool found in database" });
+        }
 
-        const totalLiquidity = Number(pool.totalValueLockedUSD || 0);
-        const volume24h = daySeries.at(-1)?.volumeUsd ?? 0;
+        // 2) Load daily metrics for selected range
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days + 1);
+        const metrics = await MetricsPoolDay.findAll({
+            where: {
+                poolId: pool.poolAddress,
+                date: { [Op.gte]: startDate }
+            },
+            order: [["date", "ASC"]]
+        });
+
+        const daySeries = metrics.map(m => ({
+            date: new Date(m.date).toISOString(),
+            volumeUsd: Number(m.volumeUsd || 0),
+            tvlUsd: Number(m.tvlUsd || 0),
+            feesUsd: Number(m.feesUsd || 0)
+        }));
+
+        const totalLiquidity = daySeries.length ? daySeries[daySeries.length - 1].tvlUsd : Number(pool.tvl || 0);
+        const volume24h = daySeries.length ? daySeries[daySeries.length - 1].volumeUsd : Number(pool.volume24h || 0);
         const volume7d = daySeries.slice(-7).reduce((s, x) => s + x.volumeUsd, 0);
-
-        // APR approximation: (fees over last 7d / TVL) * 52
         const fees7d = daySeries.slice(-7).reduce((s, x) => s + x.feesUsd, 0);
         const apr = totalLiquidity > 0 ? ((fees7d / totalLiquidity) * 52) * 100 : 0;
 
@@ -495,8 +476,8 @@ router.get("/pools/analytics", rateLimiter, async (req, res) => {
             success: true,
             pool: {
                 id: pool.id,
-                token0: pool.token0,
-                token1: pool.token1,
+                token0: { id: pool.token0 },
+                token1: { id: pool.token1 },
                 totalLiquidityUSD: totalLiquidity,
                 volume24hUSD: volume24h,
                 volume7dUSD: volume7d,
