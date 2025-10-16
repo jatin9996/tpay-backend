@@ -58,10 +58,10 @@ jobs:
 
   deploy:
     needs: build-and-push
-    if: ${{ secrets.SSH_HOST && secrets.SSH_USER && secrets.SSH_KEY }}
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH to server
+        if: ${{ secrets.SSH_HOST && secrets.SSH_USER && secrets.SSH_KEY }}
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
