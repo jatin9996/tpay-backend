@@ -1,22 +1,19 @@
-name: Backend CI/CD (Node + Docker)
+name: Backend CI/CD
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
+    branches: [ master ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  packages: write
-  pull-requests: write
-
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Node
@@ -24,62 +21,44 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: |
-          if [ -f package.json ]; then
-            npm test || echo "Tests failed or not present; continuing"
-          fi
+      - name: Build
+        run: npm run build
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.tpay }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/tpay-backend
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/tpay-backend:latest
-            ghcr.io/${{ github.repository_owner }}/tpay-backend:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  deploy:
-    needs: build-and-push
-    if: ${{ github.event_name != 'pull_request' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy via SSH to server
+      - name: Deploy via SSH to VPS
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
-            set -e
-            DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}
-            if [ -z "$DEPLOY_PATH" ]; then
-              DEPLOY_PATH="/opt/trice-pay"
-            fi
-            mkdir -p "$DEPLOY_PATH"
-            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-            cd "$DEPLOY_PATH"
-            docker pull ghcr.io/${{ github.repository_owner }}/tpay-backend:latest || true
-            if [ -f docker-compose.yml ]; then
-              docker compose pull backend || true
-              docker compose up -d backend || true
-            fi
-
-
+            mkdir -p ${{ secrets.DEPLOY_PATH }}
+            cd ${{ secrets.DEPLOY_PATH }}
+            docker login ghcr.io -u jatin9996 -p ${{ secrets.tpay }}
+            docker pull ghcr.io/jatin9996/tpay-backend:latest
+            docker stop tpay-backend || true
+            docker rm tpay-backend || true
+            docker run -d --name tpay-backend -p 4000:4000 ghcr.io/jatin9996/tpay-backend:latest
