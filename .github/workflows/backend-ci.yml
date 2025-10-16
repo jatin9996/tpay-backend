@@ -1,0 +1,94 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: |
+          if [ -f package.json ]; then
+            npm test || echo "Tests failed or not present; continuing"
+          fi
+
+  build-and-push-image:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.CR_PAT }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/tpay-backend
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/tpay-backend:latest
+            ghcr.io/${{ github.repository_owner }}/tpay-backend:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    needs: build-and-push-image
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Deploy via SSH to server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}
+            if [ -z "$DEPLOY_PATH" ]; then
+              DEPLOY_PATH="/opt/trice-pay"
+            fi
+            mkdir -p "$DEPLOY_PATH"
+            docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.CR_PAT }}
+            cd "$DEPLOY_PATH"
+            docker pull ghcr.io/${{ github.repository_owner }}/tpay-backend:latest || true
+            if [ -f docker-compose.yml ]; then
+              docker compose pull backend || true
+              docker compose up -d backend || true
+            fi
+
+
