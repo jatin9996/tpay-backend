@@ -58,6 +58,7 @@ jobs:
 
   deploy:
     needs: build-and-push
+    if: ${{ secrets.SSH_HOST && secrets.SSH_USER && secrets.SSH_KEY }}
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH to server
