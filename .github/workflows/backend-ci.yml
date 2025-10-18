@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: ./tpay-backend
@@ -16,6 +17,14 @@ jobs:
       packages: write
 
     steps:
+      - name: Verify SSH secrets
+        run: |
+          HOST_VAL='${{ secrets.SSH_HOST || vars.SSH_HOST }}'
+          USER_VAL='${{ secrets.SSH_USER || vars.SSH_USER }}'
+          [ -n "$HOST_VAL" ] || { echo "Missing SSH host. Set SSH_HOST as a Secret or Variable"; exit 1; }
+          [ -n "$USER_VAL" ] || { echo "Missing SSH user. Set SSH_USER as a Secret or Variable"; exit 1; }
+          [ -n "${{ secrets.SSH_KEY }}" ] || { echo "Missing secret: SSH_KEY (private key)"; exit 1; }
+          echo "SSH secrets present"
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -27,46 +36,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build (no-op)
         run: npm run build --if-present
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.tpay }}
+      - name: Package backend for deploy
+        run: tar -czf tpay-backend.tar.gz -C . .
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Upload artifact to server
+        uses: appleboy/scp-action@v0.1.7
         with:
-          images: ghcr.io/${{ github.repository_owner }}/tpay-backend
-          tags: |
-            type=raw,value=latest
-            type=ref,event=branch
-            type=sha
+          host: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          username: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          source: "tpay-backend/tpay-backend.tar.gz"
+          target: "${{ secrets.DEPLOY_PATH }}"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./tpay-backend
-          file: ./tpay-backend/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Deploy via SSH to VPS
+      - name: Deploy via SSH to VPS (PM2)
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          host: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
+          username: ${{ secrets.SSH_USER || vars.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           script: |
-            mkdir -p ${{ secrets.DEPLOY_PATH }}
-            cd ${{ secrets.DEPLOY_PATH }}
-            docker login ghcr.io -u jatin9996 -p ${{ secrets.tpay }}
-            docker pull ghcr.io/jatin9996/tpay-backend:latest
-            docker stop tpay-backend || true
-            docker rm tpay-backend || true
-            docker run -d --name tpay-backend -p 4000:3001 ghcr.io/jatin9996/tpay-backend:latest
+            set -e
+            DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}
+            if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/opt/tpay-backend"; fi
+            mkdir -p "$DEPLOY_PATH/current"
+            cp "$DEPLOY_PATH/tpay-backend.tar.gz" "$DEPLOY_PATH/current/" || true
+            cd "$DEPLOY_PATH/current"
+            tar -xzf tpay-backend.tar.gz --overwrite
+            rm -f tpay-backend.tar.gz
+            npm ci --omit=dev
+            if command -v pm2 >/dev/null 2>&1; then echo "pm2 present"; else npm i -g pm2; fi
+            if pm2 describe tpay-backend >/dev/null 2>&1; then
+              pm2 restart tpay-backend
+            else
+              pm2 start ecosystem.config.cjs --name tpay-backend || pm2 start src/index.js --name tpay-backend
+            fi
+            pm2 save
