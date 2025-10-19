@@ -2,77 +2,42 @@ name: Backend CI/CD
 
 on:
   push:
-    branches: [ master ]
-  workflow_dispatch:
+    branches: [ master, main ]
+    paths:
+      - 'tpay-backend/**'
+  workflow_dispatch: {}
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ./tpay-backend
     permissions:
       contents: read
-      packages: write
-
     steps:
-      - name: Verify SSH secrets
-        run: |
-          HOST_VAL='${{ secrets.SSH_HOST || vars.SSH_HOST }}'
-          USER_VAL='${{ secrets.SSH_USER || vars.SSH_USER }}'
-          [ -n "$HOST_VAL" ] || { echo "Missing SSH host. Set SSH_HOST as a Secret or Variable"; exit 1; }
-          [ -n "$USER_VAL" ] || { echo "Missing SSH user. Set SSH_USER as a Secret or Variable"; exit 1; }
-          [ -n "${{ secrets.SSH_KEY }}" ] || { echo "Missing secret: SSH_KEY (private key)"; exit 1; }
-          echo "SSH secrets present"
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Sync backend to server (rsync over SSH)
+        uses: easingthemes/ssh-deploy@v4.1.8
         with:
-          node-version: 20
+          SSH_PRIVATE_KEY: ${{ secrets.TPAY_BACKEND_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.TPAY_BACKEND_SSH_HOST }}
+          REMOTE_USER: ${{ secrets.TPAY_BACKEND_SSH_USER }}
+          SOURCE: tpay-backend/
+          TARGET: /var/www/tpay-backend
+          ARGS: -rltgoDzvO --delete --exclude='.git' --exclude='node_modules' --exclude='test' --exclude='.github'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build (no-op)
-        run: npm run build --if-present
-
-      - name: Package backend for deploy
-        run: tar -czf tpay-backend.tar.gz -C . .
-
-      - name: Upload artifact to server
-        uses: appleboy/scp-action@v0.1.7
+      - name: Install deps and restart systemd service
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          username: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          source: "tpay-backend/tpay-backend.tar.gz"
-          target: "${{ secrets.DEPLOY_PATH }}"
-
-      - name: Deploy via SSH to VPS (PM2)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST || vars.SSH_HOST }}
-          username: ${{ secrets.SSH_USER || vars.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          host: ${{ secrets.TPAY_BACKEND_SSH_HOST }}
+          username: ${{ secrets.TPAY_BACKEND_SSH_USER }}
+          key: ${{ secrets.TPAY_BACKEND_SSH_KEY }}
+          passphrase: ${{ secrets.TPAY_BACKEND_SSH_PASSPHRASE }}
           script: |
             set -e
-            DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}
-            if [ -z "$DEPLOY_PATH" ]; then DEPLOY_PATH="/opt/tpay-backend"; fi
-            mkdir -p "$DEPLOY_PATH/current"
-            cp "$DEPLOY_PATH/tpay-backend.tar.gz" "$DEPLOY_PATH/current/" || true
-            cd "$DEPLOY_PATH/current"
-            tar -xzf tpay-backend.tar.gz --overwrite
-            rm -f tpay-backend.tar.gz
+            cd /var/www/tpay-backend
+            chown -R www-data:www-data /var/www/tpay-backend
             npm ci --omit=dev
-            if command -v pm2 >/dev/null 2>&1; then echo "pm2 present"; else npm i -g pm2; fi
-            if pm2 describe tpay-backend >/dev/null 2>&1; then
-              pm2 restart tpay-backend
-            else
-              pm2 start ecosystem.config.cjs --name tpay-backend || pm2 start src/index.js --name tpay-backend
-            fi
-            pm2 save
+            systemctl restart tpay-backend
+            systemctl status tpay-backend --no-pager || true
+            ss -lntp | grep 3001 || true
