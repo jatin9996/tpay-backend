@@ -46,7 +46,8 @@ const setupAssociations = () => {
 
     // Approval associations
     Approval.belongsTo(Chain, { foreignKey: 'chainId', as: 'chain' });
-    Approval.belongsTo(Token, { foreignKey: 'token', as: 'token' });
+    // Avoid alias collision with Approval attribute 'token'
+    Approval.belongsTo(Token, { foreignKey: 'token', as: 'tokenRecord' });
     Approval.belongsTo(Transaction, { foreignKey: 'txHash', sourceKey: 'txHash', as: 'transaction' });
 
     // TxPopulation associations
