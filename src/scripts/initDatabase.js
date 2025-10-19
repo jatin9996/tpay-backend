@@ -62,10 +62,11 @@ const setupAssociations = () => {
     Pool.belongsTo(Chain, { foreignKey: 'chainId', as: 'chain' });
     Pool.belongsTo(Token, { foreignKey: 'token0', as: 'token0Token' });
     Pool.belongsTo(Token, { foreignKey: 'token1', as: 'token1Token' });
-    Pool.hasMany(MetricsPoolDay, { foreignKey: 'poolId', as: 'dailyMetrics' });
+    // Ensure FK points to poolAddress (string) to match MetricsPoolDay.poolId (string)
+    Pool.hasMany(MetricsPoolDay, { foreignKey: 'poolId', sourceKey: 'poolAddress', as: 'dailyMetrics' });
 
-    // Metrics associations
-    MetricsPoolDay.belongsTo(Pool, { foreignKey: 'poolId', as: 'pool' });
+    // Metrics associations (match string FK to Pool.poolAddress)
+    MetricsPoolDay.belongsTo(Pool, { foreignKey: 'poolId', targetKey: 'poolAddress', as: 'pool' });
 
     console.log('Model associations configured');
 };
