@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import config from "../config/env.js";
 import Token from "../models/Token.js";
+import { getDefaultTokens } from "./tokenRegistry.js";
 
 // Essential test tokens - pre-whitelisted for testing
 const essentialTokenAddresses = [
@@ -164,6 +165,21 @@ function getValidatedTokens() {
             }
         }
         
+        // Add curated defaults for the active chain so the selector and validator align
+        try {
+            const defaults = getDefaultTokens(config.DEFAULT_CHAIN_ID)
+                .map(t => t.address)
+                .filter(addr => typeof addr === 'string' && addr.trim() !== '');
+            for (const address of defaults) {
+                try {
+                    const formatted = ethers.getAddress(address);
+                    if (!validatedTokens.includes(formatted)) {
+                        validatedTokens.push(formatted);
+                    }
+                } catch {}
+            }
+        } catch {}
+
         // Add dynamic tokens
         for (const address of dynamicTokenRegistry) {
             try {

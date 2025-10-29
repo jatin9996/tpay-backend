@@ -15,6 +15,7 @@ import frontendRoutes from "./routes/frontend.js";
 import notificationRoutes from "./routes/notifications.js";
 import Notification from "./models/Notification.js";
 import { runAggregatorPeriodically } from "./jobs/swaps-24h-aggregate.js";
+import { refreshAllowedTokensFromDB } from "./services/tokenValidation.js";
 
 const app = express();
 app.use(cors());
@@ -30,6 +31,14 @@ try {
     console.log('Notification table is in sync');
 } catch (e) {
     console.error('Notification sync error:', e.message);
+}
+
+// Warm up token allowlist from DB so quotes accept listed tokens
+try {
+    await refreshAllowedTokensFromDB();
+    console.log('Token allowlist warmed from DB');
+} catch (e) {
+    console.warn('Token allowlist warmup skipped:', e?.message || e);
 }
 
 app.use("/auth", authRoutes);
