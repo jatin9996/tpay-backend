@@ -12,6 +12,9 @@ import MetricsPoolDay from '../models/MetricsPoolDay.js';
 import ServiceHealth from '../models/ServiceHealth.js';
 import QuoteRequest from '../models/QuoteRequest.js';
 import QuoteCache from '../models/QuoteCache.js';
+import Quote from '../models/Quote.js';
+import TokenStats24h from '../models/TokenStats24h.js';
+import Quote from '../models/Quote.js';
 import Notification from '../models/Notification.js';
 
 // Define model associations

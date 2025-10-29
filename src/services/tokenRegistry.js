@@ -20,8 +20,33 @@ const DEFAULT_TOKENS_BY_CHAIN = {
     { address: '0x6de037ef9ad2725eb40118bb1702ebb27e4aeb24', symbol: 'RNDR', name: 'Render', decimals: 18 },
     { address: '0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE', symbol: 'SHIB', name: 'Shiba Inu', decimals: 18 }
   ],
-  // Sepolia (keep minimal; expanded list should come from DB seed for test tokens)
-  '11155111': []
+  // Sepolia curated test list to ensure selector shows useful tokens during testing
+  // Many test tokens do not have canonical contracts; for those we use clearly-marked
+  // MOCK symbols with deterministic placeholder addresses. The frontend strips the
+  // MOCK prefix for display and icons.
+  '11155111': [
+    { address: '0x7b79995e5f793a07bc00c21412e50ecae098e7f9', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18 },
+    { address: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', symbol: 'USDC', name: 'USD Coin', decimals: 6 },
+    { address: '0xaa8e23fb1079ea71e0a56f48a2aa51851d8433d0', symbol: 'USDT', name: 'Tether USD', decimals: 6 },
+    // Widely used test tokens (placeholders where no canonical Sepolia contract exists)
+    { address: '0x1000000000000000000000000000000000000001', symbol: 'MOCKBNB', name: 'BNB', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000002', symbol: 'MOCKMATIC', name: 'Polygon', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000003', symbol: 'MOCKARB', name: 'Arbitrum', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000004', symbol: 'MOCKOP', name: 'Optimism', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000005', symbol: 'MOCKAVAX', name: 'Avalanche', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000006', symbol: 'MOCKTRX', name: 'Tron', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000007', symbol: 'MOCKSHIB', name: 'Shiba Inu', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000008', symbol: 'MOCKDOGE', name: 'Dogecoin', decimals: 8 },
+    { address: '0x1000000000000000000000000000000000000009', symbol: 'MOCKRNDR', name: 'Render', decimals: 18 },
+    { address: '0x100000000000000000000000000000000000000a', symbol: 'MOCKATOM', name: 'Cosmos', decimals: 18 },
+    { address: '0x100000000000000000000000000000000000000b', symbol: 'MOCKWBTC', name: 'Wrapped Bitcoin', decimals: 8 },
+    { address: '0x100000000000000000000000000000000000000c', symbol: 'MOCKUNI', name: 'Uniswap', decimals: 18 },
+    { address: '0x100000000000000000000000000000000000000d', symbol: 'MOCKLINK', name: 'Chainlink', decimals: 18 },
+    { address: '0x100000000000000000000000000000000000000e', symbol: 'MOCKAAVE', name: 'Aave', decimals: 18 },
+    { address: '0x100000000000000000000000000000000000000f', symbol: 'MOCKGRT', name: 'The Graph', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000010', symbol: 'MOCKMKR', name: 'Maker', decimals: 18 },
+    { address: '0x1000000000000000000000000000000000000011', symbol: 'DAI', name: 'Dai Stablecoin', decimals: 18 }
+  ]
 };
 
 export function getDefaultTokens(chainId) {

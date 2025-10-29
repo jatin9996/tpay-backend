@@ -1,0 +1,23 @@
+[
+  {"symbol":"USDT","name":"Tether USD","address":"0x2E3A2fb8473316A02b8A297B982498E661E1f6f5","network":"Ethereum Sepolia","chainId":11155111,"decimals":6,"logoURI":"https://cryptologos.cc/logos/tether-usdt-logo.png"},
+  {"symbol":"USDC","name":"USD Coin","address":"0x0FA8781a83E46826621b3BC094Ea2A0212e71B23","network":"Ethereum Sepolia","chainId":11155111,"decimals":6,"logoURI":"https://cryptologos.cc/logos/usd-coin-usdc-logo.png"},
+  {"symbol":"ETH","name":"Ethereum","address":"0xDD13E55209Fd76AfE204dBda4007C227904f0a81","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/ethereum-eth-logo.png"},
+  {"symbol":"WBTC","name":"Wrapped Bitcoin","address":"0x62f4E7dD208B3B274Ee07aDdF36B8A2084F45C4D","network":"Ethereum Sepolia","chainId":11155111,"decimals":8,"logoURI":"https://cryptologos.cc/logos/wrapped-bitcoin-wbtc-logo.png"},
+  {"symbol":"UNI","name":"Uniswap","address":"0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/uniswap-uni-logo.png"},
+  {"symbol":"BNB","name":"Binance Coin","address":"0xB7229E6B48E7C42cDd83C91Cc46FDF9D6aBf84f9","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/binance-coin-bnb-logo.png"},
+  {"symbol":"LINK","name":"Chainlink","address":"0x779877A7B0D9E8603169DdbD7836e478b4624789","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/chainlink-link-logo.png"},
+  {"symbol":"MATIC","name":"Polygon","address":"0x6848A39EeC1b84827A3B9dE7B78677E94870bCaC","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/polygon-matic-logo.png"},
+  {"symbol":"ARB","name":"Arbitrum","address":"0x8F552A71EFE5eeFc207BCAa6e9A3A1fD73E9D5e7","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/arbitrum-arb-logo.png"},
+  {"symbol":"OP","name":"Optimism","address":"0x843f3bD0A96A87C8C8141A4Da05B40dF2Eb96dF0","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/optimism-ethereum-op-logo.png"},
+  {"symbol":"AVAX","name":"Avalanche","address":"0x4b109E07D4798BBA665D4C270c39E3633C03bC2D","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/avalanche-avax-logo.png"},
+  {"symbol":"TRX","name":"Tron","address":"0x1d95Df0A146C16372b3B4a7A3A72B50b26A04F09","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/tron-trx-logo.png"},
+  {"symbol":"DAI","name":"Dai Stablecoin","address":"0x11fE4B6AE13d2a6055C8D9cF65c55bac32B5d844","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/multi-collateral-dai-dai-logo.png"},
+  {"symbol":"SHIB","name":"Shiba Inu","address":"0xA6E81e9F72b7d0D6D1aF3A91E70d22c7A6aB2fC1","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/shiba-inu-shib-logo.png"},
+  {"symbol":"DOGE","name":"Dogecoin","address":"0x3dC9b1D617021bBc12744aD91cC9e08656f1F8eA","network":"Ethereum Sepolia","chainId":11155111,"decimals":8,"logoURI":"https://cryptologos.cc/logos/dogecoin-doge-logo.png"},
+  {"symbol":"AAVE","name":"Aave","address":"0xB597cd8D3217ea6477232F9217fa70837ff667Af","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/aave-aave-logo.png"},
+  {"symbol":"GRT","name":"The Graph","address":"0x39AeF118a9E0b7E44F8E5c77D929f8c3Db7B4bF3","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/the-graph-grt-logo.png"},
+  {"symbol":"RNDR","name":"Render Token","address":"0x7D1AFA7B718fb893dB30A3aBc0Cfc608AaCfeBB0","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/render-token-rndr-logo.png"},
+  {"symbol":"MKR","name":"Maker","address":"0x9f8F72aA9304c8B593d555F12eF6589Cc3A579A2","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/maker-mkr-logo.png"},
+  {"symbol":"ATOM","name":"Cosmos","address":"0x2dE9a51D3B0457d02D6bF76a9b2646e048cED1fA","network":"Ethereum Sepolia","chainId":11155111,"decimals":18,"logoURI":"https://cryptologos.cc/logos/cosmos-atom-logo.png"}
+]
+

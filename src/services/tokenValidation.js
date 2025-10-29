@@ -36,6 +36,29 @@ function preloadEnvAllowedTokens() {
 
 // Initialize env-based tokens once at module load
 preloadEnvAllowedTokens();
+/**
+ * Refresh the dynamic allowlist from the database. This will include all tokens
+ * that are marked listed and not blacklisted across chains. It updates the
+ * in-memory registry and invalidates the cached validated token array.
+ */
+export async function refreshAllowedTokensFromDB() {
+    try {
+        const tokens = await Token.findAll({
+            where: { listed: true, blacklisted: false }
+        });
+        for (const t of tokens) {
+            try {
+                const formatted = ethers.getAddress(t.address);
+                dynamicTokenRegistry.add(formatted);
+            } catch {}
+        }
+        validatedTokens = null; // force rebuild on next access
+    } catch (e) {
+        // Non-fatal: validation will still use env-based allowlist
+        console.warn("Failed to refresh allowed tokens from DB:", e?.message || e);
+    }
+}
+
 
 /**
  * Adds a new token to the dynamic registry (permissionless listing)
@@ -166,7 +189,7 @@ function getValidatedTokens() {
  * @returns {string} - The checksummed address if valid
  * @throws {Error} - If token is not supported
  */
-function validateToken(address) {
+function validateToken(address, _chainId) {
     if (!address) {
         throw new Error("Token address is required");
     }
